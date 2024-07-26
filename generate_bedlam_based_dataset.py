@@ -369,6 +369,9 @@ def main():
 
                             # yolo
                             pred = detector.predict(np.array([rendered_image]))
+
+                            ## Для теста - дальше идёт код, рендерящий текущий скелет
+                            
                             # img = np.zeros((640, 640, 3), dtype = "uint8")
                             # img = draw_pose_2d(img, pred[0], BONES_COCO)
                             # cv2.imwrite("1.jpg", img)
@@ -386,18 +389,6 @@ def main():
                                 all_keypoints[frame] = pred[0][0]
                                 detected_indices.append(frame)
                             
-
-                    # concatenated_keypoints = np.concatenate(all_keypoints, axis=0)
-
-                    # min_x = np.min(concatenated_keypoints[:, 0])
-                    # max_x = np.max(concatenated_keypoints[:, 0])
-                    # min_y = np.min(concatenated_keypoints[:, 1])
-                    # max_y = np.max(concatenated_keypoints[:, 1])
-
-                    # normalized_keypoints = []
-                    # for keypoints in all_keypoints:
-                    #     normalized_keypoints.append((keypoints[:, :2] - [min_x, min_y]) / [max_x - min_x, max_y - min_y])
-
                     normalized_keypoints = []
                     for keypoints in all_keypoints:
                         normalized_keypoints.append(keypoints[:, :2])

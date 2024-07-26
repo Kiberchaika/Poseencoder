@@ -32,6 +32,20 @@ BONES_MEDIAPIPE = [
     (11, 13)   # left_bicep
 ]
 
+# Produce angular representation of a pose
+def calculate_angles(self, points, body_indices):
+    angles = []
+    
+    for bone in BONES_COCO:
+        if bone[0] in body_indices and bone[1] in body_indices:
+            index_1 = body_indices.index(bone[0])
+            index_2 = body_indices.index(bone[1])
+            v1 = points[index_1]
+            v2 = points[index_2]
+            angle = self.calculate_angle_between_vectors(v1, v2)
+            angles.append(angle)
+
+    return angles   
 
 # Function to draw pose on image
 def draw_pose_2d_cv(image, poses, type, conf=0.2):

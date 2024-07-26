@@ -54,33 +54,13 @@ class SkeletonEncoder:
         self.r_arm_min = None
         self.r_arm_max = None
 
-        # represents pairs of vectors
-        self.l_arm_angles = []
-        self.r_arm_angles = []
-        self.body_angles = []
-        self.legs_angles = []
-
         self.upper_body_range = []
         self.lower_body_range = []
         self.l_arm_range = []
         self.r_arm_range = []
 
         self.upper_angles = None
-        self.lower_angles = None
-
-    def calculate_angles(self, points, body_indices):
-        angles = []
-        
-        for bone in BONES_COCO:
-            if bone[0] in body_indices and bone[1] in body_indices:
-                index_1 = body_indices.index(bone[0])
-                index_2 = body_indices.index(bone[1])
-                v1 = points[index_1]
-                v2 = points[index_2]
-                angle = self.calculate_angle_between_vectors(v1, v2)
-                angles.append(angle)
-
-        return angles     
+        self.lower_angles = None  
 
     def fit(self):
         n_neighbors = 300
@@ -91,11 +71,6 @@ class SkeletonEncoder:
         self.lower_model = umap_.UMAP(n_neighbors=n_neighbors, n_epochs=n_epochs, min_dist=min_dist, n_components=n_components)
         self.l_arm_model = umap_.UMAP(n_neighbors=n_neighbors, n_epochs=n_epochs, min_dist=min_dist, n_components=n_components)
         self.r_arm_model = umap_.UMAP(n_neighbors=n_neighbors, n_epochs=n_epochs, min_dist=min_dist, n_components=n_components)
-
-        # self.l_arm_angles
-        # self.r_arm_angles
-        # self.body_angles
-        # self.legs_angles
 
         self.upper_embeddings = self.upper_model.fit_transform(np.array(self.upper_body_data).reshape(len(self.upper_body_data), -1))
         self.lower_embeddings = self.lower_model.fit_transform(np.array(self.lower_body_data).reshape(len(self.lower_body_data), -1))
