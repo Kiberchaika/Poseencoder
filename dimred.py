@@ -22,12 +22,6 @@ class SkeletonEncoder:
         self.l_arm_body_indices = [5, 7, 9, 11]
         self.r_arm_body_indices = [6, 8, 10, 12]
 
-        # Data to pass into fitting
-        self.upper_body_data_norm = None
-        self.lower_body_data_norm = None
-        self.l_arm_data_norm = None
-        self.r_arm_data_norm = None
-
         # Data that had been cut from skeletons
         self.upper_body_data = None
         self.lower_body_data = None
@@ -41,10 +35,10 @@ class SkeletonEncoder:
         self.r_arm_model = None
 
         # embedding clouds
-        self.upper_embedding = None
-        self.lower_embedding = None
-        self.l_arm_embedding = None
-        self.r_arm_embedding = None
+        self.upper_embeddings = None
+        self.lower_embeddings = None
+        self.l_arm_embeddings = None
+        self.r_arm_embeddings = None
 
         # boundaries for scalinga and normalization
         self.upper_min = None
@@ -105,35 +99,12 @@ class SkeletonEncoder:
         # self.body_angles
         # self.legs_angles
 
-        self.upper_embedding = self.upper_model.fit_transform(np.array(self.upper_body_data).reshape(len(self.upper_body_data), -1))
-        self.lower_embedding = self.lower_model.fit_transform(np.array(self.lower_body_data).reshape(len(self.lower_body_data), -1))
-        self.l_arm_embedding = self.l_arm_model.fit_transform(np.array(self.l_arm_data).reshape(len(self.l_arm_data), -1))
-        self.r_arm_embedding = self.r_arm_model.fit_transform(np.array(self.r_arm_data).reshape(len(self.r_arm_data), -1))
+        self.upper_embeddings = self.upper_model.fit_transform(np.array(self.upper_body_data).reshape(len(self.upper_body_data), -1))
+        self.lower_embeddings = self.lower_model.fit_transform(np.array(self.lower_body_data).reshape(len(self.lower_body_data), -1))
+        self.l_arm_embeddings = self.l_arm_model.fit_transform(np.array(self.l_arm_data).reshape(len(self.l_arm_data), -1))
+        self.r_arm_embeddings = self.r_arm_model.fit_transform(np.array(self.r_arm_data).reshape(len(self.r_arm_data), -1))
 
         self.compute_index()
-
-    def plot_embedding(ax, embedding, color, label, title, highlight_embedding=None, highlight_color='yellow'):
-        ax.scatter(embedding[:, 0], embedding[:, 1], c=color, label=label)
-        if highlight_embedding is not None:
-            ax.scatter(highlight_embedding[0], highlight_embedding[1], marker='*', s=200, c=highlight_color, label='Current Point')
-        ax.set_title(title)
-        ax.set_xlabel('Component 1')
-        ax.set_ylabel('Component 2')
-        ax.legend()
-        ax.invert_yaxis()
-
-    def plot_four_embeddings(full_embedding, upper_embedding, lower_embedding, l_arm_embedding, r_arm_embedding, picture_output_filename="embeddings_with_points.png"):
-        plt.figure(figsize=(16, 8))
-
-        plot_embedding(plt.subplot(2, 2, 1), full_embedding, 'blue', 'Upper Body Embeddings', 'Upper Body UMAP Embeddings', upper_embedding, 'red')
-        plot_embedding(plt.subplot(2, 2, 2), full_embedding, 'red', 'Lower Body Embeddings', 'Lower Body UMAP Embeddings', lower_embedding, 'green')
-        plot_embedding(plt.subplot(2, 2, 3), full_embedding, 'gray', 'Left Arm Embeddings', 'Left Arm UMAP Embeddings', l_arm_embedding)
-        plot_embedding(plt.subplot(2, 2, 4), full_embedding, 'gray', 'Right Arm Embeddings', 'Right Arm UMAP Embeddings', r_arm_embedding)
-
-        plt.tight_layout()
-        plt.savefig(picture_output_filename)
-        plt.close()
-
 
 
     def encode_fast_knn(self, skeleton):
@@ -156,16 +127,16 @@ class SkeletonEncoder:
             return weighted_position
 
         # Find closest embeddings
-        upper_embedding = find_closest_embedding_knn(self.upper_embedding, upper_points, self.upper_nn)
-        lower_embedding = find_closest_embedding_knn(self.lower_embedding, lower_points, self.lower_nn)
-        l_arm_embedding = find_closest_embedding_knn(self.l_arm_embedding, l_arm_points, self.l_arm_nn)
-        r_arm_embedding = find_closest_embedding_knn(self.r_arm_embedding, r_arm_points, self.r_arm_nn)
+        upper_embedding = find_closest_embedding_knn(self.upper_embeddings, upper_points, self.upper_nn)
+        lower_embedding = find_closest_embedding_knn(self.lower_embeddings, lower_points, self.lower_nn)
+        l_arm_embedding = find_closest_embedding_knn(self.l_arm_embeddings, l_arm_points, self.l_arm_nn)
+        r_arm_embedding = find_closest_embedding_knn(self.r_arm_embeddings, r_arm_points, self.r_arm_nn)
 
         return upper_embedding, lower_embedding, l_arm_embedding, r_arm_embedding
 
     # saving model
     def save(self, filename):
-        if self.upper_embedding is None or self.lower_embedding is None:
+        if self.upper_embeddings is None or self.lower_embedding is None:
             raise RuntimeError("Must fit the models first using fit() method.")
         with open(filename, 'wb') as f:
             pickle.dump({
@@ -173,10 +144,10 @@ class SkeletonEncoder:
                 'lower_model': self.lower_model,
                 'l_arm_model' : self.l_arm_model,
                 'r_arm_model' : self.r_arm_model,
-                'upper_embedding': self.upper_embedding,
-                'lower_embedding': self.lower_embedding,
-                'l_arm_embedding': self.l_arm_embedding,
-                'r_arm_embedding': self.r_arm_embedding,
+                'upper_embeddings': self.upper_embeddings,
+                'lower_embeddings': self.lower_embeddings,
+                'l_arm_embeddings': self.l_arm_embeddings,
+                'r_arm_embeddings': self.r_arm_embeddings,
                 'upper_min': self.upper_min,
                 'upper_max': self.upper_max,
                 'lower_min': self.lower_min,
@@ -187,10 +158,6 @@ class SkeletonEncoder:
                 'r_arm_max': self.r_arm_max,
                 'upper_angles': self.upper_angles,
                 'lower_angles': self.lower_angles,
-                # 'upper_body_data_norm': self.upper_body_data_norm,
-                # 'lower_body_data_norm': self.lower_body_data_norm,
-                # 'l_arm_data_norm': self.l_arm_data_norm,
-                # 'r_arm_data_norm': self.r_arm_data_norm,
                 'upper_body_data': self.upper_body_data,
                 'lower_body_data': self.lower_body_data,
                 'l_arm_data': self.l_arm_data,
@@ -220,15 +187,10 @@ class SkeletonEncoder:
             self.l_arm_model = data['l_arm_model']
             self.r_arm_model = data['r_arm_model']
 
-            self.upper_embedding = data['upper_embedding']
-            self.lower_embedding = data['lower_embedding']
-            self.l_arm_embedding = data['l_arm_embedding']
-            self.r_arm_embedding = data['r_arm_embedding']
-
-            # self.upper_body_data_norm = data['upper_body_data_norm']
-            # self.lower_body_data_norm = data['lower_body_data_norm']
-            # self.l_arm_data_norm = data['l_arm_data_norm']
-            # self.r_arm_data_norm = data['r_arm_data_norm']
+            self.upper_embeddings = data['upper_embeddings']
+            self.lower_embeddings = data['lower_embeddings']
+            self.l_arm_embeddings = data['l_arm_embeddings']
+            self.r_arm_embeddings = data['r_arm_embeddings']
 
             self.upper_body_data = data['upper_body_data']
             self.lower_body_data = data['lower_body_data']

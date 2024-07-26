@@ -222,10 +222,8 @@ def rotate_h36m_model_towards_camera_and_normalize_to_minus_one_to_one(h36m_join
 
     # Assuming 'rotated_joints' is already computed
     # Normalize 'rotated_joints' from -1 to 1
-    max_abs = np.max(np.abs(rotated_joints))
+    max_abs = 0.7 * (np.linalg.norm((rotated_joints[4] + rotated_joints[1])/2) + np.linalg.norm((rotated_joints[11]+rotated_joints[14])/2)) #np.max(np.abs(rotated_joints))
     normalized_joints = rotated_joints / max_abs
-
-    ((rotated_joints[4] + rotated_joints[1])/2 + (rotated_joints[11]+rotated_joints[14])/2) #
 
     return normalized_joints
 
