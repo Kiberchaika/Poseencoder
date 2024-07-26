@@ -393,6 +393,8 @@ def main():
                     for keypoints in all_keypoints:
                         normalized_keypoints.append(keypoints[:, :2])
 
+                    if not os.path.exists(save_folder):
+                        os.makedirs(save_folder)
                     np.save(os.path.join(save_folder, "all_keypoints.npy"), normalized_keypoints)
         
         processed_folders.append(collection_folder_path)
