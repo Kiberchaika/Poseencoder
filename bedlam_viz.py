@@ -102,7 +102,7 @@ class SMPLXVisualizer:
 
         return color
 
-def apply_rotation_toward_and_centered_vertices(h36m_joints, vert):
+def rotate_model_towards_camera_and_normalize_to_minus_one_to_one(h36m_joints, vert):
     # Define key points for orientation
     hip_center = h36m_joints[0]  # Assuming 4 is the hip center
     chest = h36m_joints[8]       # Assuming 8 is the chest joint
@@ -212,7 +212,7 @@ def main():
 
     # Paths
     
-    final_res_path = '/media/k4_nas/admin/Киберчайка/Датасеты/BEDLAM/processed'
+    final_res_path = '/media/k4_nas/admin/Киберчайка/Датасеты/BEDLAM/processed_v2_keypoints_only'
     # final_res_path = '/home/k4/Projects/Poseencoder/data'
     
 
@@ -252,7 +252,7 @@ def main():
                         visualizer = SMPLXVisualizer(smplx_model.faces)
                         
                         # Get frames data
-                        for frame in range(0, num_frames):
+                        for frame in range(0, num_frames, 20):
                             poses = motion_data['poses'][frame:frame+1]
                             trans = motion_data['trans'][frame:frame+1]
 
@@ -273,7 +273,7 @@ def main():
 
                             # Get and update bones
                             h36m_joints = get_pseudo_h36m_joints(output)
-                            vertices = apply_rotation_toward_and_centered_vertices(h36m_joints, vertices)
+                            vertices = rotate_model_towards_camera_and_normalize_to_minus_one_to_one(h36m_joints, vertices)
                             visualizer.update_mesh(vertices)
 
                             rendered_image = visualizer.render()
@@ -282,17 +282,17 @@ def main():
 
                             # yolo
                             pred = detector.predict(np.array([rendered_image]))
-                            img = np.zeros((640, 640, 3), dtype = "uint8")
-                            img = draw_pose_2d(img, pred[0], BONES_COCO)
-                            cv2.imwrite("1.jpg", img)
+                            # img = np.zeros((640, 640, 3), dtype = "uint8")
+                            # img = draw_pose_2d(img, pred[0], BONES_COCO)
+                            # cv2.imwrite("1.jpg", img)
 
-                            image_save_folder = os.path.join(save_folder, f"{human_model_name}/images")
+                            # image_save_folder = os.path.join(save_folder, f"{human_model_name}/images")
 
-                            if not os.path.exists(image_save_folder):
-                                os.makedirs(image_save_folder)
+                            # if not os.path.exists(image_save_folder):
+                            #     os.makedirs(image_save_folder)
 
-                            complete_save_path = os.path.join(image_save_folder, f'{frame}.jpg')
-                            cv2.imwrite(complete_save_path, rendered_image)
+                            # complete_save_path = os.path.join(image_save_folder, f'{frame}.jpg')
+                            # cv2.imwrite(complete_save_path, rendered_image)
 
                             if len(pred[0]) != 0 and frame not in detected_indices:
                                 # Save the keypoints for this frame
