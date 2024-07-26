@@ -19,6 +19,38 @@ from utils import BONES_COCO
 
 HUMAN_MODEL_NAMES = ["male", "female", "neutral"]
 
+'''
+def get_coco_joints(smplx_output):
+    """Extract COCO joint positions from SMPLX output."""
+    joints = smplx_output.joints.detach().cpu().numpy().squeeze()
+
+    # SMPLX to COCO joint mapping
+    smplx_to_coco = [
+        0,  # nose
+        15,  # left_eye
+        16,  # right_eye
+        17,  # left_ear
+        18,  # right_ear
+        2,   # left_shoulder
+        5,   # right_shoulder
+        3,   # left_elbow
+        6,   # right_elbow
+        4,   # left_wrist
+        7,   # right_wrist
+        9,   # left_hip
+        12,  # right_hip
+        10,   # left_knee
+        13,   # right_knee
+        11,   # left_ankle
+        14   # right_ankle
+    ]
+    
+
+    coco_joints = joints[smplx_to_coco]
+    return coco_joints
+'''
+
+#'''
 def get_pseudo_h36m_joints(smplx_output):
     """Extract Human3.6M joint positions from SMPLX output."""
     joints = smplx_output.joints.detach().cpu().numpy().squeeze()
@@ -44,6 +76,7 @@ def get_pseudo_h36m_joints(smplx_output):
         joints[21]   # RWrist
     ])
     return h36m_joints
+#'''
 
 def load_motion_sequence(path):
     data = np.load(path)
@@ -102,11 +135,58 @@ class SMPLXVisualizer:
 
         return color
 
-def rotate_model_towards_camera_and_normalize_to_minus_one_to_one(h36m_joints, vert):
+'''
+def rotate_coco_model_towards_camera_and_normalize_to_minus_one_to_one(coco_joints, vert):
     # Define key points for orientation
-    hip_center = h36m_joints[0]  # Assuming 4 is the hip center
-    chest = h36m_joints[8]       # Assuming 8 is the chest joint
-    right_hip = h36m_joints[4]   # Assuming 1 is the right hip
+    hip_center = (coco_joints[11] + coco_joints[12]) / 2  # Mid-point between left and right hip
+    chest = (coco_joints[5] + coco_joints[6]) / 2         # Mid-point between left and right shoulder
+    right_hip = coco_joints[12]                           # Right hip
+
+    # Calculate the forward direction (from hip to chest)
+    forward = chest - hip_center
+    forward = forward / np.linalg.norm(forward)
+
+    # Calculate the right direction (from hip center to right hip)
+    right = right_hip - hip_center
+    right = right / np.linalg.norm(right)
+
+    # Calculate the up direction (cross product of forward and right)
+    up = np.cross(forward, right)
+    up = up / np.linalg.norm(up)
+
+    # Recalculate the right vector to ensure orthogonality
+    right = np.cross(up, forward)
+
+    # Create the rotation matrix to face the camera
+    rotation_matrix_camera = np.array([right, up, forward]).T
+
+    # Create rotation matrix for 90 degrees around X-axis
+    theta = np.radians(90)
+    rotation_matrix_x = np.array([
+        [1, 0, 0],
+        [0, np.cos(theta), -np.sin(theta)],
+        [0, np.sin(theta), np.cos(theta)]
+    ])
+
+    # Combine rotations
+    final_rotation = np.dot(rotation_matrix_camera, rotation_matrix_x)
+
+    # Apply the combined rotation to all joints
+    rotated_joints = np.dot(vert - hip_center, final_rotation)# + hip_center
+
+    # Assuming 'rotated_joints' is already computed
+    # Normalize 'rotated_joints' from -1 to 1
+    max_abs = np.max(np.abs(rotated_joints))
+    normalized_joints = rotated_joints / max_abs
+
+    return normalized_joints
+'''
+
+def rotate_h36m_model_towards_camera_and_normalize_to_minus_one_to_one(h36m_joints, vert):
+    # Define key points for orientation
+    hip_center = h36m_joints[0]  
+    chest = h36m_joints[8]        
+    right_hip = h36m_joints[4]   
 
     # Calculate the forward direction (from hip to chest)
     forward =  chest - hip_center
@@ -145,7 +225,10 @@ def rotate_model_towards_camera_and_normalize_to_minus_one_to_one(h36m_joints, v
     max_abs = np.max(np.abs(rotated_joints))
     normalized_joints = rotated_joints / max_abs
 
+    ((rotated_joints[4] + rotated_joints[1])/2 + (rotated_joints[11]+rotated_joints[14])/2) #
+
     return normalized_joints
+
 
 def apply_transform_to_vertices(vertices, transform_matrix):
     # Add a homogeneous coordinate (1) to each vertex
@@ -279,12 +362,12 @@ def main():
 
                             # Get and update bones
                             h36m_joints = get_pseudo_h36m_joints(output)
-                            vertices = rotate_model_towards_camera_and_normalize_to_minus_one_to_one(h36m_joints, vertices)
+                            vertices = rotate_h36m_model_towards_camera_and_normalize_to_minus_one_to_one(h36m_joints, vertices)
                             visualizer.update_mesh(vertices)
 
                             rendered_image = visualizer.render()
                             rendered_image = np.copy(rendered_image) # make it writable
-                            # visualizer.render("model.jpg")
+                            visualizer.render("model.jpg")
 
                             # yolo
                             pred = detector.predict(np.array([rendered_image]))

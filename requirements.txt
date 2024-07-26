@@ -9,4 +9,6 @@ Pillow
 pyrender
 trimesh
 smplx
-python-opencv
+opencv-python
+umap
+pycocotools
