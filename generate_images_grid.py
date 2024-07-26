@@ -1,3 +1,8 @@
+import numpy as np
+import random
+from PIL import Image, ImageDraw
+import bones_utils
+
 def generate_embedding_images(self, 
                             upper_filename="upper_embeddings.png", 
                             lower_filename="lower_embeddings.png", 

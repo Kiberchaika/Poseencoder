@@ -15,7 +15,7 @@ import os
 import pickle
 
 from detectors.yolo import YOLODetector
-from utils import BONES_COCO
+from bones_utils import BONES_COCO
 
 HUMAN_MODEL_NAMES = ["male", "female", "neutral"]
 
@@ -365,7 +365,7 @@ def main():
 
                             rendered_image = visualizer.render()
                             rendered_image = np.copy(rendered_image) # make it writable
-                            visualizer.render("model.jpg")
+                            #visualizer.render("model.jpg")
 
                             # yolo
                             pred = detector.predict(np.array([rendered_image]))

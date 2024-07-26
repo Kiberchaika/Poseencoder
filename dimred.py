@@ -9,8 +9,9 @@ import time
 import numpy as np
 import faiss
 from generate_images_grid import generate_embedding_images
+import bones_utils
 
-from utils import *
+from bones_utils import *
 
 class SkeletonEncoder:
     def __init__(self):
@@ -52,9 +53,6 @@ class SkeletonEncoder:
         
         self.r_arm_min = None
         self.r_arm_max = None
-
-        # paths for corresponding images
-        self.image_paths = []
 
         # represents pairs of vectors
         self.l_arm_angles = []
@@ -226,8 +224,6 @@ class SkeletonEncoder:
         self.l_arm_data = []
         self.r_arm_data = []
         
-        self.image_paths = []
-
         for collection_folder_name in sorted(os.listdir(collection_path)):
             collection_folder_path = os.path.join(collection_path, collection_folder_name)
             if os.path.isdir(collection_folder_path):
@@ -253,18 +249,11 @@ class SkeletonEncoder:
                                     self.l_arm_data.append(l_arm_points)
                                     self.r_arm_data.append(r_arm_points)
                                     self.skeletons.append(keypoints)
-                            
-                            images_path = os.path.join(motion_folder_path, "neutral/images")
-                            for single_image in sorted(os.listdir(images_path)):
-                                image_path = os.path.join(images_path, single_image)
-                                self.image_paths.append(image_path)
-        
+                                    
         self.upper_body_data = np.array(self.upper_body_data)
         self.lower_body_data = np.array(self.lower_body_data)
         self.l_arm_data = np.array(self.l_arm_data)
         self.r_arm_data = np.array(self.r_arm_data)
-        self.image_paths = np.array(self.image_paths)
-
 
 if __name__ == "__main__":
 
