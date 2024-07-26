@@ -1,6 +1,12 @@
 super_gradients
-pynndescent=0.5.11
-numba=0.58.1
-numpy=1.26.4
+pynndescent==0.5.11
+numba==0.58.1
+numpy==1.26.4
 faiss-cpu
-pickle
+pyvirtualdisplay
+torch >= 2.3.1
+Pillow
+pyrender
+trimesh
+smplx
+python-opencv

@@ -221,6 +221,12 @@ def main():
 
     for collection_folder_name in sorted(os.listdir(directory_path)):
         collection_folder_path = os.path.join(directory_path, collection_folder_name)
+        if os.path.isdir(collection_folder_path):
+            print(collection_folder_path)
+        
+
+    for collection_folder_name in sorted(os.listdir(directory_path)):
+        collection_folder_path = os.path.join(directory_path, collection_folder_name)
         if os.path.isdir(collection_folder_path) and collection_folder_path not in processed_folders:
             print(f"processing {collection_folder_path}")
             # Iterate over all folders (directories) in the specified directory
