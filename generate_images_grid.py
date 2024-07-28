@@ -1,9 +1,18 @@
 import numpy as np
 import random
 from PIL import Image, ImageDraw
-import bones_utils
+from bones_utils import *
 
-def generate_embedding_images(self, 
+def generate_embedding_images(
+                            skeletons,
+                            upper_embeddings,
+                            lower_embeddings,
+                            l_arm_embeddings,
+                            r_arm_embeddings,
+                            upper_body_indices,
+                            lower_body_indices,
+                            l_arm_body_indices,
+                            r_arm_body_indices,
                             upper_filename="upper_embeddings.png", 
                             lower_filename="lower_embeddings.png", 
                             l_arm_filename="l_arm_embeddings.png", 
@@ -18,7 +27,15 @@ def generate_embedding_images(self,
     """
     Create a large image with small images representing the embedding points arranged in a grid.
     Optionally include red dots representing the bounding rectangles of 2D keypoints.
-
+    :param skeletons: All normalized skeletons facing to the camera from bedlam dataset
+    :param upper_embeddings: 2d embeddings from upper model
+    :param lower_embeddings: 2d embeddings from lower model
+    :param l_arm_embeddings: 2d embeddings from l_arm model
+    :param r_arm_embeddings: 2d embeddings from r_arm model
+    :param upper_body_indices: upper body indices representing target keypoints
+    :param lower_body_indices: lower body indices representing target keypoints
+    :param l_arm_body_indices: l_arm body indices representing target keypoints
+    :param r_arm_body_indices: r_arm body indices representing target keypoints
     :param upper_filename: Filename for the upper body embeddings image.
     :param lower_filename: Filename for the lower body embeddings image.
     :param l_arm_filename: Filename for the left arm embeddings image.
@@ -42,6 +59,7 @@ def generate_embedding_images(self,
 
     def create_grid_image(embedding, filename, points_2d=None, keypoint_indices=None):
         """Create a grid image for embedding points."""
+
         # Determine grid bounds
         x_min, y_min = np.min(embedding, axis=0)
         x_max, y_max = np.max(embedding, axis=0)
@@ -71,7 +89,7 @@ def generate_embedding_images(self,
                     img = Image.new('RGB', (640, 640), (0, 0, 0))
 
                     # Draw keypoints on the image
-                    skeleton = self.skeletons[chosen_index]
+                    skeleton = skeletons[chosen_index]
                     keypoints = [(skeleton[idx][0], skeleton[idx][1]) for idx in range(len(skeleton))]
                     cell_draw = ImageDraw.Draw(img)
                     draw_keypoints(cell_draw, keypoints, keypoint_indices)
@@ -112,7 +130,7 @@ def generate_embedding_images(self,
         return [x_min, y_min, x_max, y_max]
 
     # Generate images for upper, lower, left arm, and right arm embeddings
-    self.upper_body_range = create_grid_image(self.upper_embedding, upper_filename, points_2d=upper_2d_points, keypoint_indices=self.upper_body_indices)
-    self.lower_body_range = create_grid_image(self.lower_embedding, lower_filename, points_2d=lower_2d_points, keypoint_indices=self.lower_body_indices)
-    self.l_arm_range = create_grid_image(self.l_arm_embedding, l_arm_filename, points_2d=l_arm_2d_points, keypoint_indices=self.l_arm_body_indices)
-    self.r_arm_range = create_grid_image(self.r_arm_embedding, r_arm_filename, points_2d=r_arm_2d_points, keypoint_indices=self.r_arm_body_indices)
+    upper_body_range = create_grid_image(upper_embeddings, upper_filename, points_2d=upper_2d_points, keypoint_indices=upper_body_indices)
+    lower_body_range = create_grid_image(lower_embeddings, lower_filename, points_2d=lower_2d_points, keypoint_indices=lower_body_indices)
+    l_arm_range = create_grid_image(l_arm_embeddings, l_arm_filename, points_2d=l_arm_2d_points, keypoint_indices=l_arm_body_indices)
+    r_arm_range = create_grid_image(r_arm_embeddings, r_arm_filename, points_2d=r_arm_2d_points, keypoint_indices=r_arm_body_indices)

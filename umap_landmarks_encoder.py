@@ -1,6 +1,6 @@
 import numpy as np
 import pickle
-from umap import UMAP
+from umap.umap_ import UMAP
 import faiss
 from abstract_landmarks_encoder import BaseLandmarksEncoder
 
