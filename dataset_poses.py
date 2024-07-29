@@ -34,10 +34,10 @@ class PosesDataset(Dataset):
         random_left = False
         random_right = False
 
-        if -130 < y_angle < -60:
-            random_left = True
-        elif 60 < y_angle < 130:
-            random_right = True
+        #if -130 < y_angle < -60:
+        #    random_left = True
+        #elif 60 < y_angle < 130:
+        #    random_right = True
 
         skeleton = randomize_limbs(skeleton, random_left, random_right)
         rotated_skeleton = rotate_skeleton(skeleton, x_angle, y_angle, z_angle)

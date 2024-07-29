@@ -13,6 +13,52 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms import ToTensor
 from datetime import datetime
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from bones_utils import BONES_COCO
+import os
+
+def visualize_3d_and_2d_skeletons(skeleton_3d, skeletons_2d):
+    fig = plt.figure(figsize=(15, 5))
+    
+    # 3D subplot
+    ax_3d = fig.add_subplot(131, projection='3d')
+    plot_3d_skeleton(ax_3d, skeleton_3d)
+    ax_3d.set_title('Generated 3D Pose')
+    
+    # 2D subplots
+    ax_2d_1 = fig.add_subplot(132)
+    plot_2d_skeleton(ax_2d_1, skeletons_2d[0])
+    ax_2d_1.set_title('2D Conditioning (View 1)')
+    
+    ax_2d_2 = fig.add_subplot(133)
+    plot_2d_skeleton(ax_2d_2, skeletons_2d[1])
+    ax_2d_2.set_title('2D Conditioning (View 2)')
+    
+    plt.tight_layout()
+    return fig
+
+def plot_3d_skeleton(ax, skeleton):
+    for start, end in BONES_COCO:
+        ax.plot([skeleton[start, 0], skeleton[end, 0]],
+                [skeleton[start, 1], skeleton[end, 1]],
+                [skeleton[start, 2], skeleton[end, 2]], 'bo-')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(-1, 1)
+    ax.set_zlim(-1, 1)
+
+def plot_2d_skeleton(ax, skeleton):
+    for start, end in BONES_COCO:
+        ax.plot([skeleton[start, 0], skeleton[end, 0]],
+                [skeleton[start, 1], skeleton[end, 1]], 'ro-') 
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(-1, 1)
+    # Remove the invert_yaxis() call
+    ax.set_aspect('equal', adjustable='box')  # Ensure correct aspect ratio
+
 class ResidualLinearBlock(nn.Module):
     def __init__(self, in_features: int, out_features: int, is_res: bool = False) -> None:
         super().__init__()
@@ -117,69 +163,35 @@ class ContextPoseUnet(nn.Module):
         )
 
     def forward(self, x, c, t, context_mask):
-        # print(f"Input x shape: {x.shape}")
+        batch_size = x.shape[0]
         
-        x = x.view(x.shape[0], -1)  # Flatten the input
-        # print(f"Flattened x shape: {x.shape}")
-        
+        x = x.view(batch_size, -1)  # Flatten the input
         x = self.init_conv(x)
-        # print(f"After init_conv x shape: {x.shape}")
-        
         down1 = self.down1(x)
-        # print(f"down1 shape: {down1.shape}")
-        
         down2 = self.down2(down1)
-        # print(f"down2 shape: {down2.shape}")
-        
         hiddenvec = self.to_vec(down2)
-        # print(f"hiddenvec shape: {hiddenvec.shape}")
 
-        # print(f"Input c shape: {c.shape}")
-        
-        c = c.view(c.shape[0], -1)
-        # print(f"Flattened c shape: {c.shape}")
+        c = c.view(batch_size, -1)
 
-        # print(f"context_mask shape: {context_mask.shape}")
-        
+        # mask out context if context_mask == 1
         context_mask = context_mask.view(-1, 1)
-        # print(f"Reshaped context_mask shape: {context_mask.shape}")
-        
         context_mask = context_mask.repeat(1, c.shape[1])
-        # print(f"Repeated context_mask shape: {context_mask.shape}")
-        
         context_mask = (-1*(1-context_mask))
         c = c * context_mask
-        # print(f"Masked c shape: {c.shape}")
         
         cemb1 = self.contextembed1(c)
-        # print(f"cemb1 shape: {cemb1.shape}")
-        
         temb1 = self.timeembed1(t.unsqueeze(1))
-        # print(f"temb1 shape: {temb1.shape}")
-        
         cemb2 = self.contextembed2(c)
-        # print(f"cemb2 shape: {cemb2.shape}")
-        
         temb2 = self.timeembed2(t.unsqueeze(1))
-        # print(f"temb2 shape: {temb2.shape}")
 
         up1 = self.up0(hiddenvec)
-        # print(f"up1 shape (after up0): {up1.shape}")
         up1 = up1 + cemb1 + temb1
-        # print(f"up1 shape (after addition): {up1.shape}")
         up2 = self.up1(up1, down2)
-        # print(f"up2 shape (before addition): {up2.shape}")
         up2 = up2 + cemb2 + temb2
-        # print(f"up2 shape (after addition): {up2.shape}")
         up3 = self.up2(up2, down1)
-        # print(f"up3 shape: {up3.shape}")
         out = self.out(up3)
-        # print(f"out shape before reshape: {out.shape}")
         
-        out = out.view(-1, 17, 3)  # Reshape back to (batch_size, 17, 3)
-        # print(f"Final out shape: {out.shape}")
-        
-        return out
+        return out.view(batch_size, 17, 3)  # Reshape back to (batch_size, 17, 3)
     
 def ddpm_schedules(beta1, beta2, T):
     """
@@ -247,25 +259,42 @@ class DDPM(nn.Module):
         return self.loss_mse(noise, self.nn_model(x_t, c, _ts / self.n_T, context_mask))
 
     def sample(self, n_sample, size, device, guide_w=0.0, conditioning=None):
-        x_i = torch.randn(n_sample, *size).to(device)
+        x_i = torch.randn(n_sample, *size).to(device)  # x_T ~ N(0, 1), sample initial noise
         
         if conditioning is None:
-            conditioning = torch.zeros(n_sample, 17, 2, 2).to(device)  # Default conditioning if none provided
+            conditioning = torch.zeros(n_sample, 2, 17, 2).to(device)  # Default conditioning if none provided
         
-        x_i_store = []
+        # don't drop context at test time
+        context_mask = torch.zeros(n_sample).to(device)
+
+        # prepare context_mask for doubling
+        context_mask_double = torch.cat([context_mask, torch.ones_like(context_mask)], dim=0)
+
+        x_i_store = []  # keep track of generated steps in case want to plot something 
+        print()
         for i in range(self.n_T, 0, -1):
             print(f'sampling timestep {i}', end='\r')
             t_is = torch.full((n_sample,), i / self.n_T, device=device)
-            
+
+            # double batch
+            x_i_double = torch.cat([x_i, x_i], dim=0)
+            conditioning_double = torch.cat([conditioning, conditioning], dim=0)
+            t_is_double = t_is.repeat(2)
+
+            # split predictions and compute weighting
+            eps = self.nn_model(x_i_double, conditioning_double, t_is_double, context_mask_double)
+            eps1 = eps[:n_sample]
+            eps2 = eps[n_sample:]
+            eps = (1+guide_w)*eps1 - guide_w*eps2
+
+            # Update x_i using the combined eps
             z = torch.randn(n_sample, *size).to(device) if i > 1 else 0
-            
-            eps = self.nn_model(x_i, conditioning, t_is, torch.zeros(n_sample, device=device))
             x_i = (
                 self.oneover_sqrta[i] * (x_i - eps * self.mab_over_sqrtmab[i])
                 + self.sqrt_beta_t[i] * z
             )
             
-            if i % 20 == 0 or i == self.n_T or i < 8:
+            if i%20==0 or i==self.n_T or i<8:
                 x_i_store.append(x_i.detach().cpu().numpy())
         
         x_i_store = np.array(x_i_store)
@@ -286,7 +315,7 @@ def train_pose():
     n_feat = 256
     lrate = 1e-4
     save_model = True
-    base_save_dir = './data/diffusion_outputs_pose/'
+    base_save_dir = './pose_ddpm_runs/'
     ws_test = [0.0, 0.5, 2.0]
 
     # Create a timestamped directory for this run
@@ -336,15 +365,23 @@ def train_pose():
         avg_train_loss = train_loss_sum / len(train_dataloader)
         writer.add_scalar('Loss/train_epoch', avg_train_loss, ep)
         
-        # Validation loop
+        # Validation and sampling
         ddpm.eval()
-        val_loss_sum = 0
         with torch.no_grad():
-            for x in val_dataloader:
+            val_loss_sum = 0
+            val_samples = []
+            n_sample = 4
+            sample_interval = math.ceil(len(val_dataloader) / n_sample)
+            
+            for i, x in enumerate(val_dataloader):
                 x_3d = x[0]['skeleton_3d'].to(device)
                 x_2d = x[0]['skeletons_2d'].to(device)
                 loss = ddpm(x_3d, x_2d)
                 val_loss_sum += loss.item()
+                
+                # Collect samples at specific intervals
+                if i % sample_interval == 0 and len(val_samples) < n_sample:
+                    val_samples.append((x_3d[0], x_2d[0]))  # Append first item of the batch
             
             avg_val_loss = val_loss_sum / len(val_dataloader)
             writer.add_scalar('Loss/validation', avg_val_loss, ep)
@@ -352,13 +389,14 @@ def train_pose():
             print(f"Epoch {ep} - Train Loss: {avg_train_loss:.4f}, Validation Loss: {avg_val_loss:.4f}")
 
             # Sample and visualize
-            n_sample = 4
             for w_i, w in enumerate(ws_test):
-                x_gen, x_gen_store = ddpm.sample(n_sample, (17, 3), device, guide_w=w, conditioning=x_2d[:n_sample])
+                x_2d_samples = torch.stack([sample[1] for sample in val_samples])
+                x_gen, x_gen_store = ddpm.sample(n_sample, (17, 3), device, guide_w=w, conditioning=x_2d_samples)
                 
                 for i in range(n_sample):
-                    fig = rotate_project_draw_3d_skeleton(x_gen[i].cpu().numpy())
-                    writer.add_image(f'Generated_Pose/w_{w}_sample_{i}', fig_to_tensor(fig), ep)
+                    fig = visualize_3d_and_2d_skeletons(x_gen[i].cpu().numpy(), x_2d_samples[i].cpu().numpy())
+                    writer.add_figure(f'Generated_Pose_with_Conditioning/w_{w}_sample_{i}', fig, ep)
+                    plt.close(fig)
 
         if save_model and ep == int(n_epoch-1):
             model_save_path = os.path.join(save_dir, f"model_{ep}.pth")

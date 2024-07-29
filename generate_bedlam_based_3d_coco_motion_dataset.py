@@ -404,12 +404,8 @@ def main():
                             combined_pose = np.concatenate([current_pose, next_pose], axis=1)
                             final_normalized_skeleton_array.append(combined_pose)
 
-                            fig1 = rotate_project_draw_two_3d_skeleton(current_pose, next_pose, y_rotation=90)
-                            fig1.savefig("pose_3d_current_and_next.jpg")
-                        break
-
-                break
-        break
+                            # fig1 = rotate_project_draw_two_3d_skeleton(current_pose, next_pose, y_rotation=90)
+                            # fig1.savefig("pose_3d_current_and_next.jpg")
 
         # # Update processed folders after each collection
         # processed_folders.append(collection_folder_path)
