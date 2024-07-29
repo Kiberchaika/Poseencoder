@@ -13,17 +13,8 @@ def load_3d_keypoints_dataset(dataset_path):
         dataset = pickle.load(f)
         print(f"loaded {len(dataset)} skeletons")
         return dataset
-        
-        
-# Static variable for COCO bones
-BONES_COCO = [
-    (0, 1), (0, 2), (1, 3), (2, 4),  # Face
-    (5, 6), (5, 7), (7, 9), (6, 8), (8, 10),  # Arms
-    (5, 11), (6, 12), (11, 12),  # Torso
-    (11, 13), (13, 15), (12, 14), (14, 16)  # Legs
-]
 
-def cluster_skeletons(skeletons, n_clusters):
+def cluster_skeletons(skeletons, n_clusters, samples_per_cluster=10):
     reshaped_skeletons = skeletons.reshape(skeletons.shape[0], -1)
     
     timestamp = time.time()
@@ -36,12 +27,28 @@ def cluster_skeletons(skeletons, n_clusters):
     cluster_sizes.sort(key=lambda x: x[1], reverse=True)
     
     clustered_skeletons = []
+    cluster_data = []
     for cluster_idx, size in cluster_sizes:
+        if size < samples_per_cluster:
+            continue
         cluster_mask = (cluster_labels == cluster_idx)
         cluster_skeletons = skeletons[cluster_mask]
         clustered_skeletons.append((cluster_skeletons, size))
+        
+        # Calculate centroid
+        centroid = np.mean(cluster_skeletons, axis=0)
+        
+        # Select random samples
+        random_indices = np.random.choice(size, samples_per_cluster, replace=False)
+        random_samples = cluster_skeletons[random_indices]
+        
+        cluster_data.append({
+            'cluster_number': cluster_idx,
+            'centroid': centroid,
+            'random_samples': random_samples
+        })
     
-    return clustered_skeletons
+    return clustered_skeletons, cluster_data
 
 def rotate_skeleton(skeleton, axis, angle):
     theta = np.radians(angle)
@@ -59,7 +66,7 @@ def rotate_skeleton(skeleton, axis, angle):
         ])
     return np.dot(skeleton, rotation_matrix)
 
-def visualize_skeletons(skeleton, cluster_index, cluster_size):
+def visualize_skeletons_four_rotations(skeleton, cluster_index, cluster_size):
     fig, axs = plt.subplots(2, 2, figsize=(16, 16))
     fig.suptitle(f"Cluster {cluster_index} (Size: {cluster_size})", fontsize=16)
     
@@ -69,7 +76,7 @@ def visualize_skeletons(skeleton, cluster_index, cluster_size):
         rotate_skeleton(skeleton, 'y', 45),
         rotate_skeleton(skeleton, 'y', 315)
     ]
-    titles = ['Original', 'Upper view 90° (X-axis)', 'View from right 45° (Y-axis)', 'View from right 45° (Y-axis)']
+    titles = ['Original', 'Upper view 90° (X-axis)', 'View from right 45° (Y-axis)', 'View from left 45° (Y-axis)']
     
     for idx, (ax, rotated_skeleton, title) in enumerate(zip(axs.flatten(), skeletons, titles)):
         # Plot bones
@@ -92,28 +99,36 @@ def visualize_skeletons(skeleton, cluster_index, cluster_size):
 def gradio_interface(cluster_index, clustered_skeletons):
     cluster_skeletons, cluster_size = clustered_skeletons[cluster_index]
     random_skeleton = cluster_skeletons[np.random.randint(cluster_size)]
-    fig = visualize_skeletons(random_skeleton, cluster_index, cluster_size)
+    fig = visualize_skeletons_four_rotations(random_skeleton, cluster_index, cluster_size)
     return fig
 
-# Generate some random skeleton data for demonstration
-# num_skeletons = 1000
-# skeletons = np.random.rand(num_skeletons, 17, 3) * 100
-skeletons = load_3d_keypoints_dataset("/media/k4_nas/admin/Киберчайка/Датасеты/BEDLAM/processed_3d_keypoints/3d_skeletons_dataset.pkl")
+def save_cluster_data(cluster_data, output_path):
+    with open(output_path, 'wb') as f:
+        pickle.dump(cluster_data, f)
 
-# Cluster the skeletons
-n_clusters = 1000
-clustered_skeletons = cluster_skeletons(skeletons, n_clusters)
+if __name__ == "__main__":
+    # Load the skeleton data
+    skeletons = load_3d_keypoints_dataset("/media/k4_nas/admin/Киберчайка/Датасеты/BEDLAM/processed_3d_keypoints/3d_skeletons_dataset.pkl")
 
-# Create Gradio interface
-iface = gr.Interface(
-    fn=lambda cluster: gradio_interface(cluster, clustered_skeletons),
-    inputs=[
-        gr.Slider(0, n_clusters-1, step=1, label="Cluster"),
-    ],
-    outputs="plot",
-    title="Random Skeleton Cluster Visualization",
-    description="Select a cluster to visualize. Clusters are ordered by size, with the largest cluster having index 0. Each time you submit, a random skeleton from the selected cluster will be shown with its original view and three rotated views.",
-)
+    # Cluster the skeletons
+    n_clusters = 1000
+    samples_per_cluster = 50
+    clustered_skeletons, cluster_data = cluster_skeletons(skeletons, n_clusters, samples_per_cluster)
 
-# Generate HTML file
-iface.launch(share=True)
+    # print("Saving cluster data")
+    # save_cluster_data(cluster_data, "cluster_data_to_umap.pkl")
+    # print("Saving cluster data done")
+
+    # Create Gradio interface
+    iface = gr.Interface(
+        fn=lambda cluster: gradio_interface(cluster, clustered_skeletons),
+        inputs=[
+            gr.Slider(0, len(clustered_skeletons)-1, step=1, label="Cluster"),
+        ],
+        outputs="plot",
+        title="Random Skeleton Cluster Visualization",
+        description="Select a cluster to visualize. Clusters are ordered by size, with the largest cluster having index 0. Each time you submit, a random skeleton from the selected cluster will be shown with its original view and three rotated views.",
+    )
+
+    # Generate HTML file
+    iface.launch(share=True)

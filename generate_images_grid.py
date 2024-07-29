@@ -134,3 +134,113 @@ def generate_embedding_images(
     lower_body_range = create_grid_image(lower_embeddings, lower_filename, points_2d=lower_2d_points, keypoint_indices=lower_body_indices)
     l_arm_range = create_grid_image(l_arm_embeddings, l_arm_filename, points_2d=l_arm_2d_points, keypoint_indices=l_arm_body_indices)
     r_arm_range = create_grid_image(r_arm_embeddings, r_arm_filename, points_2d=r_arm_2d_points, keypoint_indices=r_arm_body_indices)
+
+def generate_embedding_images_kmeans(
+                            centroids,
+                            upper_centroids_embeddings,
+                            lower_centroids_embeddings,
+                            l_arm_centroids_embeddings,
+                            r_arm_centroids_embeddings,
+                            upper_body_indices,
+                            lower_body_indices,
+                            l_arm_body_indices,
+                            r_arm_body_indices,
+                            upper_filename="upper_embeddings.png", 
+                            lower_filename="lower_embeddings.png", 
+                            l_arm_filename="l_arm_embeddings.png", 
+                            r_arm_filename="r_arm_embeddings.png", 
+                            grid_size=(20, 20), 
+                            image_size=(32, 32)):
+    """
+    Create a large image with images of centroid skeletons arranged in a grid based on their embeddings.
+    Skeletons are scaled proportionally to fit within each cell and oriented correctly.
+    """
+
+    def draw_keypoints(draw, keypoints, highlight_indices, color='yellow', other_color='gray'):
+        """Draw keypoints and bones on the image."""
+        for i, j in BONES_COCO:
+            if i in highlight_indices and j in highlight_indices:
+                draw.line([(keypoints[i][0], keypoints[i][1]), (keypoints[j][0], keypoints[j][1])], fill=color, width=3)
+            else:
+                draw.line([(keypoints[i][0], keypoints[i][1]), (keypoints[j][0], keypoints[j][1])], fill=other_color, width=3)
+
+    def scale_skeleton(keypoints_2d, image_size):
+        """Scale the skeleton to fit within the image size while maintaining aspect ratio and correct orientation."""
+        min_coords = np.min(keypoints_2d, axis=0)
+        max_coords = np.max(keypoints_2d, axis=0)
+        
+        # Calculate the range of the skeleton in both dimensions
+        skeleton_range = max_coords - min_coords
+        
+        # Calculate the scaling factor to fit the skeleton within the image
+        scale = min(image_size[0] / skeleton_range[0], image_size[1] / skeleton_range[1])
+        
+        # Scale the skeleton
+        scaled_keypoints = (keypoints_2d - min_coords) * scale
+        
+        # Flip the y-coordinates to correct the orientation
+        scaled_keypoints[:, 1] = image_size[1] - scaled_keypoints[:, 1]
+        
+        # Calculate the offset to center the skeleton in the image
+        offset_x = (image_size[0] - scaled_keypoints[:, 0].max()) / 2
+        offset_y = (image_size[1] - scaled_keypoints[:, 1].max()) / 2
+        
+        scaled_keypoints[:, 0] += offset_x
+        scaled_keypoints[:, 1] += offset_y
+        
+        return scaled_keypoints
+
+    def create_grid_image(embeddings_centroid, filename, highlight_indices):
+        """Create a grid image for embedding points."""
+
+        # Determine grid bounds
+        x_min, y_min = np.min(embeddings_centroid, axis=0)
+        x_max, y_max = np.max(embeddings_centroid, axis=0)
+
+        # Create mesh grid
+        x_bins = np.linspace(x_min, x_max, grid_size[0] + 1)
+        y_bins = np.linspace(y_min, y_max, grid_size[1] + 1)
+
+        # Create an empty image for the grid
+        grid_image = Image.new('RGB', (grid_size[0] * image_size[0], grid_size[1] * image_size[1]), (0, 0, 0))
+
+        # Assign images to grid cells
+        for idx, embedding in enumerate(embeddings_centroid):
+            # Determine which cell this embedding belongs to
+            i = np.digitize(embedding[0], x_bins) - 1
+            j = np.digitize(embedding[1], y_bins) - 1
+            
+            # Create a black background image
+            img = Image.new('RGB', image_size, (0, 0, 0))
+
+            # Draw keypoints on the image
+            skeleton = centroids[idx]
+            
+            # Extract x and y coordinates, ignoring z
+            keypoints_2d = skeleton[:, :2]
+            
+            # Scale the skeleton to fit within the image size
+            scaled_keypoints = scale_skeleton(keypoints_2d, image_size)
+            
+            # Convert to integer coordinates
+            keypoints = [(int(kp[0]), int(kp[1])) for kp in scaled_keypoints]
+            
+            cell_draw = ImageDraw.Draw(img)
+            draw_keypoints(cell_draw, keypoints, highlight_indices)
+
+            # Paste the cell image into the grid
+            grid_image.paste(img, (i * image_size[0], j * image_size[1]))
+
+        # Save the resulting image
+        grid_image.save(filename)
+        print(f"Image {filename} saved")
+
+        return [x_min, y_min, x_max, y_max]
+
+    # Generate images for upper, lower, left arm, and right arm embeddings
+    upper_body_range = create_grid_image(upper_centroids_embeddings, upper_filename, upper_body_indices)
+    lower_body_range = create_grid_image(lower_centroids_embeddings, lower_filename, lower_body_indices)
+    l_arm_range = create_grid_image(l_arm_centroids_embeddings, l_arm_filename, l_arm_body_indices)
+    r_arm_range = create_grid_image(r_arm_centroids_embeddings, r_arm_filename, r_arm_body_indices)
+
+    return upper_body_range, lower_body_range, l_arm_range, r_arm_range
