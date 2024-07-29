@@ -2,7 +2,6 @@ from torch.utils.data import Dataset
 from pose_3d_perspective_projection import load_3d_keypoints_dataset, rotate_skeleton, randomize_limbs, perspective_projection
 import numpy as np
 
-
 # Symmetrical bone pairs
 SYMMETRICAL_BONES = [
     (4, 3), (2, 1),  
@@ -34,10 +33,10 @@ class PosesDataset(Dataset):
         random_left = False
         random_right = False
 
-        #if -130 < y_angle < -60:
-        #    random_left = True
-        #elif 60 < y_angle < 130:
-        #    random_right = True
+        if -130 < y_angle < -60:
+            random_left = True
+        elif 60 < y_angle < 130:
+            random_right = True
 
         skeleton = randomize_limbs(skeleton, random_left, random_right)
         rotated_skeleton = rotate_skeleton(skeleton, x_angle, y_angle, z_angle)
@@ -59,8 +58,8 @@ class PosesDataset(Dataset):
             # ? вращать немного руки, ноги, голову для 3д
 
             # Random swap
-            random_left = np.random.uniform(0, 1) > 0.5
-            random_right = np.random.uniform(0, 1) > 0.5
+            random_left = np.random.uniform(0, 1) < 0.25
+            random_right = np.random.uniform(0, 1) < 0.25
             skeleton = randomize_limbs(skeleton, random_left, random_right)
  
             # Streach
