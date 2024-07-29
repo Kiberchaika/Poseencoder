@@ -24,10 +24,15 @@ class PosesDataset(Dataset):
         return len(self.skeletons)
     
     def project_to_2d_and_normalize(self, skeleton):
-        x_angle = np.random.uniform(-75, 0)
-        y_angle = np.random.uniform(-180, 180)
-        z_angle = np.random.uniform(-35, 35)
+        # V1
+        # x_angle = np.random.uniform(-75, 0)
+        # y_angle = np.random.uniform(-180, 180)
+        # z_angle = np.random.uniform(-35, 35)
         
+        x_angle = np.random.uniform(-10, 0)
+        y_angle = np.random.uniform(-180, 180)
+        z_angle = np.random.uniform(0, 0)
+
         fov = np.random.uniform(60, 80)
 
         random_left = False
@@ -38,9 +43,9 @@ class PosesDataset(Dataset):
         elif 60 < y_angle < 130:
             random_right = True
 
-        skeleton = randomize_limbs(skeleton, random_left, random_right)
+        # skeleton = randomize_limbs(skeleton, random_left, random_right)
         rotated_skeleton = rotate_skeleton(skeleton, x_angle, y_angle, z_angle)
-        projected_skeleton = perspective_projection(rotated_skeleton, fov, 1, 0.1, 100, 5)
+        projected_skeleton = perspective_projection(rotated_skeleton, fov, 1, 0.1, 100, 15)
 
         # normalisation for 2d -1:1
         distances = np.sqrt(np.sum(projected_skeleton**2, axis=1))

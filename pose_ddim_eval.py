@@ -19,7 +19,7 @@ def extract(a, t, x_shape):
 class DDIMSampler(nn.Module):
     def __init__(self, model, beta_start_end, n_T, device):
         super().__init__()
-        self.model = model
+        self.model = torch.compile(model)
         self.n_T = n_T
         self.device = device
 
@@ -35,7 +35,7 @@ class DDIMSampler(nn.Module):
 
         # Pre-compute time steps
         self.time_steps = {}
-        for steps in [1, 5, 10, 20, 45, 50, 100, 200, 500, 1000]:  # Add or remove steps as needed
+        for steps in [1, 10, 20, 50, 100, 200, 500, 1000]:  # Add or remove steps as needed
             t = torch.linspace(n_T - 1, 0, steps, dtype=torch.long, device=device)
             self.time_steps[steps] = t
 
@@ -48,53 +48,75 @@ class DDIMSampler(nn.Module):
 
     @torch.no_grad()
     def sample(self, x_t, conditioning, guide_w=0.0, steps=50, eta=0.0):
+        profile = {}
         batch_size = x_t.shape[0]
         x = x_t
 
+        start = time.time()
         # Use pre-computed time steps and alpha values
         time_steps = self.time_steps[steps]
         alpha_t = self.alpha_t[steps].unsqueeze(1).expand(steps, batch_size).t()
         alpha_t_next = self.alpha_t_next[steps].unsqueeze(1).expand(steps, batch_size).t()
+        profile['alpha_t_unsqueeze'] = (time.time() - start) * 1000
 
+        start = time.time()
         # Pre-compute context masks
         context_mask = torch.zeros(batch_size, device=self.device)
         context_mask_double = torch.cat([context_mask, torch.ones_like(context_mask)], dim=0)
+        profile['context_mask'] = (time.time() - start) * 1000
 
         for i in range(steps):
             t = time_steps[i]
             
+            start = time.time()
             # Double the batch for guided diffusion
             x_double = torch.cat([x, x], dim=0)
             c_double = torch.cat([conditioning, conditioning], dim=0)
             t_double = t.repeat(batch_size * 2)
+            profile['double_batch'] = profile.get('double_batch', 0) + (time.time() - start) * 1000
             
+            start = time.time()
             # Predict noise
             eps = self.model(x_double, c_double, t_double.float() / self.n_T, context_mask_double)
+            profile['predict_noise'] = profile.get('predict_noise', 0) + (time.time() - start) * 1000
             
+            start = time.time()
             # Apply guidance
             eps1, eps2 = eps.chunk(2)
             eps = (1 + guide_w) * eps1 - guide_w * eps2
+            profile['apply_guidance'] = profile.get('apply_guidance', 0) + (time.time() - start) * 1000
 
+            start = time.time()
             # Compute sigma_t
             sigma_t = eta * torch.sqrt((1 - alpha_t_next[:, i]) / (1 - alpha_t[:, i]) * (1 - alpha_t[:, i] / alpha_t_next[:, i]))
+            profile['compute_sigma_t'] = profile.get('compute_sigma_t', 0) + (time.time() - start) * 1000
 
+            start = time.time()
             # Compute x_{t-1}
             c1 = torch.sqrt(alpha_t_next[:, i] / alpha_t[:, i])
             c2 = torch.sqrt(1 - alpha_t_next[:, i] - sigma_t**2) - torch.sqrt((alpha_t_next[:, i] * (1 - alpha_t[:, i])) / alpha_t[:, i])
             x_next = c1.unsqueeze(1) * x + c2.unsqueeze(1) * eps
+            profile['compute_x_next'] = profile.get('compute_x_next', 0) + (time.time() - start) * 1000
 
             if i < steps - 1:
+                start = time.time()
                 noise = torch.randn_like(x)
                 x_next += sigma_t.unsqueeze(1) * noise
+                profile['add_noise'] = profile.get('add_noise', 0) + (time.time() - start) * 1000
 
             x = x_next
 
-        return x
+        return x, profile
     
 # Usage
 def sample_ddim(ddim, n_sample, size, device, guide_w=0.0, conditioning=None, steps=50, eta=0.0):
     x = torch.randn(n_sample, *size, device=device)
-    return ddim.sample(x, conditioning, guide_w, steps, eta)
+    sample, profile = ddim.sample(x, conditioning, guide_w, steps, eta)
+    print("DDIM Sampling Profile:")
+    for key, value in profile.items():
+        print(f"{key}: {value:.2f} ms")
+    
+    return sample
 
 def visualize_3d_and_2d_skeletons(skeleton_3d, skeletons_2d):
     fig = plt.figure(figsize=(15, 5))
@@ -152,7 +174,7 @@ ddim_sampler = DDIMSampler(ddpm.nn_model, ddpm.betas, ddpm.n_T, device)
 
 
 # Load checkpoint
-checkpoint = torch.load('pose_ddpm_runs/run_20240729_232401/model_156.pth', map_location=device)
+checkpoint = torch.load('pose_ddpm_runs/run_20240729_232401/model_179.pth', map_location=device)
 ddpm.load_state_dict(checkpoint['model_state_dict']) # не работает загрузка
 
 '''
@@ -171,12 +193,14 @@ dataset = PosesDataset(how_many_2d_poses_to_generate=2, use_additional_augment=F
 item = dataset[1000]
 input_tensor  = torch.tensor(item[0]['skeletons_2d'], dtype=torch.float32).unsqueeze(0)
 
+torch.inference_mode()
+
 # Evaluation
 ddpm.eval()
 
 with torch.no_grad():
     n_sample = 1
-    w = 1.0
+    w = 1.5
     # x_gen, x_gen_store = ddpm.sample(n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device))
     # start_time = time.time()
     # x_t = torch.randn(n_sample, 17, 3).to(device)
@@ -189,6 +213,9 @@ with torch.no_grad():
         start_time = time.time()
         x_gen_ddim = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device), steps=10, eta=1.0)
         end_time = time.time()
+
+
+
         ddim_sampling_time = (end_time - start_time) * 1000 / n_sample
         print(f"Average DDIM sampling time per pose (w={w}): {ddim_sampling_time:.2f} ms")
 
