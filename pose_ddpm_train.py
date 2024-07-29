@@ -238,6 +238,19 @@ class DDPM(nn.Module):
         self.drop_prob = drop_prob
         self.loss_mse = nn.MSELoss()
 
+        self.betas = betas
+
+        self.n_T = n_T
+        self.device = device
+        self.drop_prob = drop_prob
+        self.loss_mse = nn.MSELoss()
+
+    def get_alphas_cumprod(self):
+        return self.alphabar_t
+
+    def get_model(self):
+        return self.nn_model
+
     def forward(self, x, c):
         # print(f"DDPM forward - x shape: {x.shape}, c shape: {c.shape}")
         
@@ -312,9 +325,9 @@ def fig_to_tensor(fig):
     return ToTensor()(image)
 
 def train_pose(ckpt_path=None):
-    n_epoch = 100
-    batch_size = 16
-    n_T = 25
+    n_epoch = 200 # was 100
+    batch_size = 32
+    n_T = 50
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
     n_feat = 256
     lrate = 1e-4
