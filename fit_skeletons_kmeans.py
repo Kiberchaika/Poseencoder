@@ -44,21 +44,35 @@ def main(dataset_path):
     centroids, skeletons = load_motions_data(dataset_path)
     print("Loading data done")
 
-    print("Adding data to encoders...")
-    for skeleton in skeletons:
-        upper_encoder.add(skeleton[upper_body_indices])
-        lower_encoder.add(skeleton[lower_body_indices])
-        l_arm_encoder.add(skeleton[l_arm_body_indices])
-        r_arm_encoder.add(skeleton[r_arm_body_indices])
-    print("Adding data to encoders done")
+    # print("Adding data to encoders...")
+    # for skeleton in skeletons:
+    #     upper_encoder.add(skeleton[upper_body_indices])
+    #     lower_encoder.add(skeleton[lower_body_indices])
+    #     l_arm_encoder.add(skeleton[l_arm_body_indices])
+    #     r_arm_encoder.add(skeleton[r_arm_body_indices])
+    # print("Adding data to encoders done")
 
-    print("Fitting models...")
-    upper_encoder.fit()
-    lower_encoder.fit()
-    l_arm_encoder.fit()
-    r_arm_encoder.fit()
-    print("Fitting models done")
+    # print("Fitting models...")
+    # upper_encoder.fit()
+    # lower_encoder.fit()
+    # l_arm_encoder.fit()
+    # r_arm_encoder.fit()
+    # print("Fitting models done")
 
+    # print("Saving models...")
+    # upper_encoder.save("upper_encoder_model_umap_kmeans.pkl")
+    # lower_encoder.save("lower_encoder_model_umap_kmeans.pkl")
+    # l_arm_encoder.save("l_arm_encoder_model_umap_kmeans.pkl")
+    # r_arm_encoder.save("r_arm_encoder_model_umap_kmeans.pkl")
+    # print("Saving models done")
+
+    print("Loading models...")
+    upper_encoder.load("upper_encoder_model_umap_kmeans.pkl")
+    lower_encoder.load("lower_encoder_model_umap_kmeans.pkl")
+    l_arm_encoder.load("l_arm_encoder_model_umap_kmeans.pkl")
+    r_arm_encoder.load("r_arm_encoder_model_umap_kmeans.pkl")
+    print("Loading models done")
+    
     # Example skeleton for encoding (using the first centroid)
     example_skeleton = centroids[0]
 
@@ -69,27 +83,15 @@ def main(dataset_path):
         lower_embedding = lower_encoder.encode(example_skeleton[lower_body_indices])
         l_arm_embedding = l_arm_encoder.encode(example_skeleton[l_arm_body_indices])
         r_arm_embedding = r_arm_encoder.encode(example_skeleton[r_arm_body_indices])
+        # print(upper_embedding, lower_embedding, l_arm_embedding, r_arm_embedding)
     print(f"Encoding time: {time.time() - ts} seconds")
 
-    print("Saving models...")
-    upper_encoder.save("upper_encoder_model_umap_kmeans.pkl")
-    lower_encoder.save("lower_encoder_model_umap_kmeans.pkl")
-    l_arm_encoder.save("l_arm_encoder_model_umap_kmeans.pkl")
-    r_arm_encoder.save("r_arm_encoder_model_umap_kmeans.pkl")
-    print("Saving models done")
-
-    # print("Loading models...")
-    # upper_encoder.load("upper_encoder_model_umap_kmeans.pkl")
-    # lower_encoder.load("lower_encoder_model_umap_kmeans.pkl")
-    # l_arm_encoder.load("l_arm_encoder_model_umap_kmeans.pkl")
-    # r_arm_encoder.load("r_arm_encoder_model_umap_kmeans.pkl")
-    # print("Loading models done")
-
     # Generate embeddings for centroid skeletons
-    upper_embedding_centroids = [upper_encoder.encode(centroid[upper_body_indices]) for centroid in centroids]
-    lower_embeddings_centroids = [lower_encoder.encode(centroid[lower_body_indices]) for centroid in centroids]
-    l_arm_embeddings_centroids = [l_arm_encoder.encode(centroid[l_arm_body_indices]) for centroid in centroids]
-    r_arm_embeddings_centroids = [r_arm_encoder.encode(centroid[r_arm_body_indices]) for centroid in centroids]
+    upper_embedding_centroids = [upper_encoder.encode(centroid[upper_body_indices], False) for centroid in centroids]
+    lower_embeddings_centroids = [lower_encoder.encode(centroid[lower_body_indices], False) for centroid in centroids]
+    l_arm_embeddings_centroids = [l_arm_encoder.encode(centroid[l_arm_body_indices], False) for centroid in centroids]
+    r_arm_embeddings_centroids = [r_arm_encoder.encode(centroid[r_arm_body_indices], False) for centroid in centroids]
+
 
     print("Generating embedding images...")
     os.makedirs("emb", exist_ok=True)

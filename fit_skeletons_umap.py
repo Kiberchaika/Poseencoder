@@ -55,18 +55,6 @@ def main(dataset_path):
     r_arm_encoder.fit()
     print("Fitting models done")
 
-    # Example skeleton for encoding
-    example_skeleton = skeletons[0]
-
-    print("Encoding example skeleton...")
-    ts = time.time()
-    for _ in range(1000):
-        upper_embedding = upper_encoder.encode(example_skeleton[upper_body_indices])
-        lower_embedding = lower_encoder.encode(example_skeleton[lower_body_indices])
-        l_arm_embedding = l_arm_encoder.encode(example_skeleton[l_arm_body_indices])
-        r_arm_embedding = r_arm_encoder.encode(example_skeleton[r_arm_body_indices])
-    print(f"Encoding time: {time.time() - ts} seconds")
-
     print("Saving models...")
     upper_encoder.save("upper_encoder_model_umap.pkl")
     lower_encoder.save("lower_encoder_model_umap.pkl")
@@ -81,24 +69,36 @@ def main(dataset_path):
     # r_arm_encoder.load("r_arm_encoder_model_umap.pkl")
     # print("Loading models done")
 
-    print("Generating embedding images...")
-    os.makedirs("emb", exist_ok=True)
-    for i in range(5):
-        generate_embedding_images(
-            skeletons,
-            upper_encoder.embeddings, lower_encoder.embeddings,
-            l_arm_encoder.embeddings, r_arm_encoder.embeddings,
-            upper_body_indices, lower_body_indices,
-            l_arm_body_indices, r_arm_body_indices,
-            f"emb/upper_emb/upper_emb_{i}.jpg", f"emb/lower_emb/lower_emb_{i}.jpg",
-            f"emb/l_arm_emb/l_arm_emb_{i}.jpg", f"emb/r_arm_emb/r_arm_emb_{i}.jpg",
-            grid_size=(16, 16), image_size=(64, 64),
-            upper_2d_points=upper_embedding,
-            lower_2d_points=lower_embedding,
-            l_arm_2d_points=l_arm_embedding,
-            r_arm_2d_points=r_arm_embedding
-        )
-    print("Generating embedding images done")
+    # Example skeleton for encoding
+    example_skeleton = skeletons[0]
+
+    print("Encoding example skeleton...")
+    ts = time.time()
+    for _ in range(1000):
+        upper_embedding = upper_encoder.encode(example_skeleton[upper_body_indices])
+        lower_embedding = lower_encoder.encode(example_skeleton[lower_body_indices])
+        l_arm_embedding = l_arm_encoder.encode(example_skeleton[l_arm_body_indices])
+        r_arm_embedding = r_arm_encoder.encode(example_skeleton[r_arm_body_indices])
+    print(f"Encoding time: {time.time() - ts} seconds")
+
+    # print("Generating embedding images...")
+    # os.makedirs("emb", exist_ok=True)
+    # for i in range(5):
+    #     generate_embedding_images(
+    #         skeletons,
+    #         upper_encoder.embeddings, lower_encoder.embeddings,
+    #         l_arm_encoder.embeddings, r_arm_encoder.embeddings,
+    #         upper_body_indices, lower_body_indices,
+    #         l_arm_body_indices, r_arm_body_indices,
+    #         f"emb/upper_emb/upper_emb_{i}.jpg", f"emb/lower_emb/lower_emb_{i}.jpg",
+    #         f"emb/l_arm_emb/l_arm_emb_{i}.jpg", f"emb/r_arm_emb/r_arm_emb_{i}.jpg",
+    #         grid_size=(16, 16), image_size=(64, 64),
+    #         upper_2d_points=upper_embedding,
+    #         lower_2d_points=lower_embedding,
+    #         l_arm_2d_points=l_arm_embedding,
+    #         r_arm_2d_points=r_arm_embedding
+    #     )
+    # print("Generating embedding images done")
     
 
 if __name__ == "__main__":

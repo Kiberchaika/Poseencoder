@@ -5,12 +5,75 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "DDIM test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/k4/Projects/Poseencoder/pose_ddim_eval.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Train 2d to 3d pose DDPM",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "pose_ddpm_train.py",
+            "console": "integratedTerminal",
+            "args": "${command:pickArgs}"
+        },
+        {
             "name": "Generate BEDLAM based dataset",
             "type": "debugpy",
             "request": "launch",
             "program": "generate_bedlam_based_dataset.py",
             "console": "integratedTerminal"
             // , "args": "${command:pickArgs}"
-        }
+        },
+        {
+            "name": "train swae for 3d poses",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "run.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-c",
+                "configs/swae_pose.yaml"
+            ],
+            "cwd": "${workspaceFolder}/PyTorch-VAE"
+        },
+        {
+            "name": "train swae for 3d/2d poses",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "run.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-c",
+                "configs/swae_pose_dual.yaml"
+            ],
+            "cwd": "${workspaceFolder}/PyTorch-VAE"
+        },
+        {
+            "name": "train swae for 3d/2d poses mean z",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "run.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-c",
+                "configs/swae_pose_dual_mean_z.yaml"
+            ],
+            "cwd": "${workspaceFolder}/PyTorch-VAE"
+        },
+        {
+            "name": "train swae for 3d/2d poses resnet",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "run.py",
+            "console": "integratedTerminal",
+            "args": [
+                "-c",
+                "configs/swae_pose_dual_resnet.yaml"
+            ],
+            "cwd": "${workspaceFolder}/PyTorch-VAE"
+        },
     ]
 }

@@ -3,6 +3,7 @@ import pickle
 from umap.umap_ import UMAP
 import faiss
 from abstract_landmarks_encoder import BaseLandmarksEncoder
+from scipy.optimize import minimize
 
 class UMAPLandmarksEncoder(BaseLandmarksEncoder):
     def __init__(self, input_landmarks_shape, embedding_shape):
@@ -25,19 +26,30 @@ class UMAPLandmarksEncoder(BaseLandmarksEncoder):
         self.faiss_index = faiss.IndexFlatL2(data_array.shape[1])
         self.faiss_index.add(data_array.astype(np.float32))
 
-    def encode(self, landmarks):
-        if landmarks.shape != self.input_landmarks_shape:
-            raise ValueError(f"Expected shape {self.input_landmarks_shape}, got {landmarks.shape}")
-        
+    def encode(self, landmarks, triangulation=True):
         landmarks_flat = landmarks.reshape(1, -1).astype(np.float32)
-        distances, indices = self.faiss_index.search(landmarks_flat, k=10)
-        
+        k = 10
+        distances, indices = self.faiss_index.search(landmarks_flat, k=k)
         nearest_embeddings = self.embeddings[indices[0]]
-        weights = 1 / (distances[0] + 1e-5)
-        weighted_embedding = np.average(nearest_embeddings, axis=0, weights=weights)
-        
-        return weighted_embedding
 
+        if triangulation:
+            weights = self._optimize_weights(nearest_embeddings)
+        else:
+            weights = 1 / (distances[0] + 1e-5)
+            weights /= np.sum(weights)
+
+        return np.dot(weights, nearest_embeddings)
+
+    def _optimize_weights(self, nearest_embeddings):
+        def objective(weights):
+            return np.sum((np.dot(weights, nearest_embeddings) - nearest_embeddings)**2)
+
+        constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
+        bounds = [(0, 1) for _ in range(len(nearest_embeddings))]
+        result = minimize(objective, x0=np.ones(len(nearest_embeddings))/len(nearest_embeddings),
+                          method='SLSQP', constraints=constraints, bounds=bounds)
+        return result.x
+    
     def decode(self, encoding):
         # This method is not implemented in the original code
         # You might want to implement it in the future
