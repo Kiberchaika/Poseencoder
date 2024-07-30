@@ -3,6 +3,46 @@ import torch.nn as nn
 
 import gin
 import numpy as np
+from unet import ContextPoseUnet
+
+def instantiate_ddpm_from_config(config_path, device, ckpt_path=None):
+    # Parse the Gin config file, ignoring 'train_pose' parameters
+    with open(config_path, 'r') as f:
+        config_str = f.read()
+    config_lines = [line for line in config_str.split('\n') if not line.startswith('train_pose.')]
+    gin.parse_config(config_lines)
+
+    # Extract parameters from the config
+    betas = gin.query_parameter('MultiposeDiffusion.betas')
+    n_T = gin.query_parameter('MultiposeDiffusion.n_T')
+    n_feat = gin.query_parameter('MultiposeDiffusion.n_feat')
+
+    # Use default values for parameters not specified in the config
+    drop_prob = 0.1  # You can adjust this default value
+
+    if ckpt_path:
+        # Create the model
+        model = MultiposeDiffusion(ContextPoseUnet, betas, n_T, device, n_feat=n_feat)
+        
+        # Load the checkpoint
+        checkpoint = torch.load(ckpt_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        print(f"Loaded model from checkpoint. Epoch: {checkpoint['epoch']}")
+    else:
+        # Instantiate ContextPoseUnet
+        nn_model = ContextPoseUnet(in_features=17*3, n_feat=n_feat)
+
+        # Instantiate MultiposeDiffusion
+        model = MultiposeDiffusion(
+            nn_model=nn_model,
+            betas=betas,
+            n_T=n_T,
+            device=device,
+            drop_prob=drop_prob,
+            n_feat=n_feat
+        )
+    
+    return model.to(device)
 
 def ddpm_schedules(beta1, beta2, T):
     """
@@ -32,6 +72,21 @@ def ddpm_schedules(beta1, beta2, T):
         "mab_over_sqrtmab": mab_over_sqrtmab_inv,
     }
 
+def reshape_conditioning(x):
+    # x shape: (batch_size, 2, 17, 2)
+    batch_size, _, joints, _ = x.shape
+    
+    # First, we'll permute the dimensions to bring the ones we want to combine together
+    x = x.permute(0, 2, 1, 3)
+    # Now x shape: (batch_size, 17, 2, 2)
+    
+    # Then, we'll reshape to combine the last two dimensions
+    x = x.reshape(batch_size, joints, 4)
+    # Now x shape: (batch_size, 17, 4)
+    
+    return x
+
+
 @gin.configurable
 class MultiposeDiffusion(nn.Module):
     def __init__(self, nn_model, betas, n_T, device, drop_prob=0.1, n_feat=256):
@@ -48,7 +103,6 @@ class MultiposeDiffusion(nn.Module):
         self.loss_mse = nn.MSELoss()
         self.betas = betas
 
-    
     def save(self, path, epoch, optimizer, train_loss, val_loss):
         torch.save({
             'epoch': epoch,
@@ -84,19 +138,6 @@ class MultiposeDiffusion(nn.Module):
     def get_model(self):
         return self.nn_model
 
-    def reshape_conditioning(self, x):
-        # x shape: (batch_size, 2, 17, 2)
-        batch_size, _, joints, _ = x.shape
-        
-        # First, we'll permute the dimensions to bring the ones we want to combine together
-        x = x.permute(0, 2, 1, 3)
-        # Now x shape: (batch_size, 17, 2, 2)
-        
-        # Then, we'll reshape to combine the last two dimensions
-        x = x.reshape(batch_size, joints, 4)
-        # Now x shape: (batch_size, 17, 4)
-        
-        return x
 
     def forward(self, x, c):
         # print(f"DDPM forward - x shape: {x.shape}, c shape: {c.shape}")
