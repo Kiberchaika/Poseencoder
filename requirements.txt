@@ -11,3 +11,7 @@ smplx
 opencv-python
 umap-learn
 pycocotools
+torch==2.3.1
+torchvision==0.18.1
+gradio
+opencv-python

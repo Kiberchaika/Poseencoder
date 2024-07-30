@@ -10,6 +10,7 @@ from bones_utils import BONES_COCO
 import time
 
 import numpy as np
+import subprocess
 
 def extract(a, t, x_shape):
     batch_size = t.shape[0]
@@ -20,6 +21,7 @@ class DDIMSampler(nn.Module):
     def __init__(self, model, beta_start_end, n_T, device):
         super().__init__()
         self.model = torch.compile(model)
+        # self.model = model
         self.n_T = n_T
         self.device = device
 
@@ -35,7 +37,7 @@ class DDIMSampler(nn.Module):
 
         # Pre-compute time steps
         self.time_steps = {}
-        for steps in [1, 2, 3, 4, 5, 10, 15, 20, 50, 100, 200, 500, 1000]:  # Add or remove steps as needed
+        for steps in [1,2,3,4,5,6,7,8,9, 10, 11, 12, 15, 20, 50, 100, 200, 500, 1000]:
             t = torch.linspace(n_T - 1, 0, steps, dtype=torch.long, device=device)
             self.time_steps[steps] = t
 
@@ -46,6 +48,30 @@ class DDIMSampler(nn.Module):
             self.alpha_t[steps] = self.alphas_cumprod[t]
             self.alpha_t_next[steps] = torch.cat([self.alphas_cumprod[t[1:]], torch.tensor([1.0], device=device)])
 
+    # @torch.jit.script
+    def single_step_after(self, x, eps, t, alpha_t, alpha_t_next, guide_w, eta, n_T, context_mask_double):        
+        eps1, eps2 = eps.chunk(2)
+        eps = (1 + guide_w) * eps1 - guide_w * eps2
+
+        sigma_t = eta * torch.sqrt((1 - alpha_t_next) / (1 - alpha_t) * (1 - alpha_t / alpha_t_next))
+
+        c1 = torch.sqrt(alpha_t_next / alpha_t)
+        c2 = torch.sqrt(1 - alpha_t_next - sigma_t**2) - torch.sqrt((alpha_t_next * (1 - alpha_t)) / alpha_t)
+        x_next = c1.unsqueeze(1) * x + c2.unsqueeze(1) * eps
+
+        return x_next, sigma_t
+    
+    def single_step_before(self, x, conditioning, t, alpha_t, alpha_t_next, guide_w, eta, n_T, context_mask_double):
+        batch_size = x.shape[0]
+        
+        x_double = torch.cat([x, x], dim=0)
+        c_double = torch.cat([conditioning, conditioning], dim=0)
+        t_double = t.repeat(batch_size * 2)
+        
+        eps = self.model(x_double, c_double, t_double.float() / n_T, context_mask_double)
+        
+        return eps
+
     @torch.no_grad()
     def sample(self, x_t, conditioning, guide_w=0.0, steps=50, eta=0.0):
         profile = {}
@@ -53,58 +79,30 @@ class DDIMSampler(nn.Module):
         x = x_t
 
         start = time.time()
-        # Use pre-computed time steps and alpha values
         time_steps = self.time_steps[steps]
         alpha_t = self.alpha_t[steps].unsqueeze(1).expand(steps, batch_size).t()
         alpha_t_next = self.alpha_t_next[steps].unsqueeze(1).expand(steps, batch_size).t()
         profile['alpha_t_unsqueeze'] = (time.time() - start) * 1000
 
         start = time.time()
-        # Pre-compute context masks
         context_mask = torch.zeros(batch_size, device=self.device)
         context_mask_double = torch.cat([context_mask, torch.ones_like(context_mask)], dim=0)
         profile['context_mask'] = (time.time() - start) * 1000
 
+        start = time.time()
         for i in range(steps):
             t = time_steps[i]
             
-            start = time.time()
-            # Double the batch for guided diffusion
-            x_double = torch.cat([x, x], dim=0)
-            c_double = torch.cat([conditioning, conditioning], dim=0)
-            t_double = t.repeat(batch_size * 2)
-            profile['double_batch'] = profile.get('double_batch', 0) + (time.time() - start) * 1000
-            
-            start = time.time()
-            # Predict noise
-            eps = self.model(x_double, c_double, t_double.float() / self.n_T, context_mask_double)
-            profile['predict_noise'] = profile.get('predict_noise', 0) + (time.time() - start) * 1000
-            
-            start = time.time()
-            # Apply guidance
-            eps1, eps2 = eps.chunk(2)
-            eps = (1 + guide_w) * eps1 - guide_w * eps2
-            profile['apply_guidance'] = profile.get('apply_guidance', 0) + (time.time() - start) * 1000
-
-            start = time.time()
-            # Compute sigma_t
-            sigma_t = eta * torch.sqrt((1 - alpha_t_next[:, i]) / (1 - alpha_t[:, i]) * (1 - alpha_t[:, i] / alpha_t_next[:, i]))
-            profile['compute_sigma_t'] = profile.get('compute_sigma_t', 0) + (time.time() - start) * 1000
-
-            start = time.time()
-            # Compute x_{t-1}
-            c1 = torch.sqrt(alpha_t_next[:, i] / alpha_t[:, i])
-            c2 = torch.sqrt(1 - alpha_t_next[:, i] - sigma_t**2) - torch.sqrt((alpha_t_next[:, i] * (1 - alpha_t[:, i])) / alpha_t[:, i])
-            x_next = c1.unsqueeze(1) * x + c2.unsqueeze(1) * eps
-            profile['compute_x_next'] = profile.get('compute_x_next', 0) + (time.time() - start) * 1000
+            eps = self.single_step_before(x, conditioning, t, alpha_t[:, i], alpha_t_next[:, i], 
+                                          guide_w, eta, self.n_T, context_mask_double)
+            x, sigma_t = self.single_step_after(x, eps, t, alpha_t[:, i], alpha_t_next[:, i], 
+                                          guide_w, eta, self.n_T, context_mask_double)
 
             if i < steps - 1:
-                start = time.time()
                 noise = torch.randn_like(x)
-                x_next += sigma_t.unsqueeze(1) * noise
-                profile['add_noise'] = profile.get('add_noise', 0) + (time.time() - start) * 1000
+                x += sigma_t.unsqueeze(1) * noise
 
-            x = x_next
+        profile['sampling'] = (time.time() - start) * 1000
 
         return x, profile
     
@@ -159,12 +157,50 @@ def plot_2d_skeleton(ax, skeleton):
     # Remove the invert_yaxis() call
     ax.set_aspect('equal', adjustable='box')  # Ensure correct aspect ratio
 
+def generate_samples_and_video(ddim_sampler, input_tensor, device, n_frames=15, n_sample=1, w=1.5, steps=10, eta=1.0):
+    output_dir = 'ddim_output'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    with torch.no_grad():
+        for j in range(n_frames):
+            # DDIM sampling
+            start_time = time.time()
+            x_gen = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device), steps=steps, eta=eta)
+            end_time = time.time()
+
+            ddim_sampling_time = (end_time - start_time) * 1000 / n_sample
+            print(f"Frame {j+1}/{n_frames} - Average DDIM sampling time per pose (w={w}): {ddim_sampling_time:.2f} ms")
+
+            fig = visualize_3d_and_2d_skeletons(x_gen[0].cpu().numpy(), input_tensor[0].cpu().numpy())
+            output_path = os.path.join(output_dir, f'ddim_frame_{j:04d}.png')
+            fig.savefig(output_path)
+            plt.close(fig)
+
+    # Generate video using ffmpeg
+    video_output = 'ddim_animation.mp4'
+    ffmpeg_cmd = [
+        'ffmpeg',
+        '-framerate', '30',  # Adjust as needed
+        '-i', os.path.join(output_dir, 'ddim_frame_%04d.png'),
+        '-c:v', 'libx264',
+        '-pix_fmt', 'yuv420p',
+        '-y',
+        video_output
+    ]
+    
+    try:
+        subprocess.run(ffmpeg_cmd, check=True)
+        print(f"Video generated successfully: {video_output}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error generating video: {e}")
 
 # Set device
 device = "cuda:1" if torch.cuda.is_available() else "cpu"
 n_feat = 512
 n_T = 50
 ws_test = [0.0, 0.5, 2.0]
+
+torch.set_float32_matmul_precision('high')
 
 # Initialize model
 ddpm = DDPM(nn_model=ContextPoseUnet(in_features=17*3, n_feat=n_feat), betas=(1e-4, 0.02), n_T=n_T, device=device, drop_prob=0.1)
@@ -174,7 +210,9 @@ ddim_sampler = DDIMSampler(ddpm.nn_model, ddpm.betas, ddpm.n_T, device)
 
 
 # Load checkpoint
-checkpoint = torch.load('/home/k4/Projects/Poseencoder/pose_ddpm_runs/run_20240730_095911/model_94.pth', map_location=device)
+# checkpoint = torch.load('/home/k4/Projects/Poseencoder/pose_ddpm_runs/batch32_steps50_feats256/model_199.pth', map_location=device)
+# checkpoint = torch.load('/home/k4/Projects/Poseencoder/pose_ddpm_runs/batch128_steps25_feats512/model_199.pth', map_location=device)
+checkpoint = torch.load('pose_ddpm_runs/run_20240730_100605/model_55.pth', map_location=device)
 ddpm.load_state_dict(checkpoint['model_state_dict']) # не работает загрузка
 
 '''
@@ -200,7 +238,10 @@ ddpm.eval()
 
 with torch.no_grad():
     n_sample = 1
-    w = 1.5
+
+    generate_samples_and_video(ddim_sampler, input_tensor, device, 30, w=1.0, steps=15)
+
+    # w = 1.5
     # x_gen, x_gen_store = ddpm.sample(n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device))
     # start_time = time.time()
     # x_t = torch.randn(n_sample, 17, 3).to(device)
@@ -208,20 +249,20 @@ with torch.no_grad():
     # x_gen = ddim_sampler.ddim_sample_loop(shape, 50, guide_w=0.0, conditioning=x_2d_samples, n_steps=50, eta=0.0)
     # end_time = time.time()
 
-    for j in range(0, 15):
-        # DDIM sampling
-        start_time = time.time()
-        x_gen_ddim = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device), steps=5, eta=1.0)
-        end_time = time.time()
+    # for j in range(0, 15):
+    #     # DDIM sampling
+    #     start_time = time.time()
+    #     # x_gen, x_gen_store = ddpm.sample(n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device))
+    #     x_gen = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device), steps=10, eta=1.0)
+    #     end_time = time.time()
 
 
 
-        ddim_sampling_time = (end_time - start_time) * 1000 / n_sample
-        print(f"Average DDIM sampling time per pose (w={w}): {ddim_sampling_time:.2f} ms")
+    #     ddim_sampling_time = (end_time - start_time) * 1000 / n_sample
+    #     print(f"Average DDIM sampling time per pose (w={w}): {ddim_sampling_time:.2f} ms")
 
 
-        for i in range(n_sample):
-            fig = visualize_3d_and_2d_skeletons(x_gen_ddim[i].cpu().numpy(), input_tensor[0].cpu().numpy())
-            fig.savefig(os.path.join(f'ddim_test{j}.jpg'))
-            plt.close(fig)
+    #     fig = visualize_3d_and_2d_skeletons(x_gen[0].cpu().numpy(), input_tensor[0].cpu().numpy())
+    #     fig.savefig(os.path.join(f'ddim_test{j}.jpg'))
+    #     plt.close(fig)
 

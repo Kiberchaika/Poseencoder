@@ -4,7 +4,7 @@ import os
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 
-from pose_ddpm_train import DDPM, ContextPoseUnet
+from pose_ddpm_train_smallermodel import DDPM, ContextPoseUnet
 from dataset_poses import PosesDataset
 from bones_utils import BONES_COCO
 import time
@@ -35,7 +35,7 @@ class DDIMSampler(nn.Module):
 
         # Pre-compute time steps
         self.time_steps = {}
-        for steps in [1, 2, 3, 4, 5, 10, 15, 20, 50, 100, 200, 500, 1000]:  # Add or remove steps as needed
+        for steps in [1, 10, 20, 50, 100, 200, 500, 1000]:  # Add or remove steps as needed
             t = torch.linspace(n_T - 1, 0, steps, dtype=torch.long, device=device)
             self.time_steps[steps] = t
 
@@ -174,7 +174,7 @@ ddim_sampler = DDIMSampler(ddpm.nn_model, ddpm.betas, ddpm.n_T, device)
 
 
 # Load checkpoint
-checkpoint = torch.load('/home/k4/Projects/Poseencoder/pose_ddpm_runs/run_20240730_095911/model_94.pth', map_location=device)
+checkpoint = torch.load('/home/k4/Projects/Poseencoder/pose_ddpm_runs/run_20240730_100605/model_67.pth', map_location=device)
 ddpm.load_state_dict(checkpoint['model_state_dict']) # не работает загрузка
 
 '''
@@ -211,7 +211,7 @@ with torch.no_grad():
     for j in range(0, 15):
         # DDIM sampling
         start_time = time.time()
-        x_gen_ddim = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device), steps=5, eta=1.0)
+        x_gen_ddim = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device), steps=10, eta=1.0)
         end_time = time.time()
 
 
