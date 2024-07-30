@@ -8,7 +8,6 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 import numpy as np
 from tqdm import tqdm
 from dataset_poses import PosesDataset
-from pose_3d_perspective_projection import rotate_project_draw_3d_skeleton
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.transforms import ToTensor
 from datetime import datetime
