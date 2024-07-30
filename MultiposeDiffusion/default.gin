@@ -1,0 +1,6 @@
+MultiposeDiffusion.n_T = 50
+MultiposeDiffusion.n_feat = 512
+MultiposeDiffusion.betas = (1e-4, 0.02)
+train_pose.n_epoch = 400
+train_pose.batch_size = 256
+train_pose.lrate = 1e-4
