@@ -159,49 +159,49 @@ def plot_2d_skeleton(ax, skeleton):
     # Remove the invert_yaxis() call
     ax.set_aspect('equal', adjustable='box')  # Ensure correct aspect ratio
 
+if __name__ == '__main__':
+    # Set device
+    device = "cuda:1" if torch.cuda.is_available() else "cpu"
+    n_feat = 512
+    n_T = 25
+    ws_test = [0.0, 0.5, 2.0]
 
-# Set device
-device = "cuda:1" if torch.cuda.is_available() else "cpu"
-n_feat = 512
-n_T = 25
-ws_test = [0.0, 0.5, 2.0]
+    # Initialize model
+    ddpm = DDPM(nn_model=ContextPoseUnet(in_features=17*3, n_feat=n_feat), betas=(1e-4, 0.02), n_T=n_T, device=device, drop_prob=0.1)
+    ddpm.to(device)
 
-# Initialize model
-ddpm = DDPM(nn_model=ContextPoseUnet(in_features=17*3, n_feat=n_feat), betas=(1e-4, 0.02), n_T=n_T, device=device, drop_prob=0.1)
-ddpm.to(device)
-
-ddim_sampler = DDIMSampler(ddpm.nn_model, ddpm.betas, ddpm.n_T, device)
+    ddim_sampler = DDIMSampler(ddpm.nn_model, ddpm.betas, ddpm.n_T, device)
 
 
-# Load checkpoint
-# checkpoint = torch.load('pose_ddpm_runs/run_20240730_095911/model_94.pth', map_location=device) # 50 steps
-checkpoint = torch.load('pose_ddpm_runs/run_20240730_084456/model_299.pth', map_location=device) # 25 steps
-ddpm.load_state_dict(checkpoint['model_state_dict']) # не работает загрузка
+    # Load checkpoint
+    # checkpoint = torch.load('pose_ddpm_runs/run_20240730_095911/model_94.pth', map_location=device) # 50 steps
+    checkpoint = torch.load('pose_ddpm_runs/run_20240730_084456/model_299.pth', map_location=device) # 25 steps
+    ddpm.load_state_dict(checkpoint['model_state_dict']) # не работает загрузка
 
-dataset = PosesDataset(how_many_2d_poses_to_generate=2, use_additional_augment=False, split='train')
-conditioning_target = dataset[1000]
-conditioning_input  = torch.tensor(conditioning_target[0]['skeletons_2d'], dtype=torch.float32).unsqueeze(0)
+    dataset = PosesDataset(how_many_2d_poses_to_generate=2, use_additional_augment=False, split='train')
+    conditioning_target = dataset[1000]
+    conditioning_input  = torch.tensor(conditioning_target[0]['skeletons_2d'], dtype=torch.float32).unsqueeze(0)
 
-torch.inference_mode()
+    torch.inference_mode()
 
-# Evaluation
-ddpm.eval()
+    # Evaluation
+    ddpm.eval()
 
-with torch.no_grad():
-    n_sample = 1
-    w = 1.5
+    with torch.no_grad():
+        n_sample = 1
+        w = 1.5
 
-    for j in range(0, 15):
-        # DDIM sampling
-        start_time = time.time()
-        x_gen_ddim = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=conditioning_input[0].to(device), steps=10, eta=1.0)
-        end_time = time.time()
+        for j in range(0, 15):
+            # DDIM sampling
+            start_time = time.time()
+            x_gen_ddim = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=conditioning_input[0].to(device), steps=10, eta=1.0)
+            end_time = time.time()
 
-        ddim_sampling_time = (end_time - start_time) * 1000 / n_sample
-        print(f"Average DDIM sampling time per pose (w={w}): {ddim_sampling_time:.2f} ms")
+            ddim_sampling_time = (end_time - start_time) * 1000 / n_sample
+            print(f"Average DDIM sampling time per pose (w={w}): {ddim_sampling_time:.2f} ms")
 
-        for i in range(n_sample):
-            fig = visualize_3d_and_2d_skeletons(x_gen_ddim[i].cpu().numpy(), conditioning_input[0].cpu().numpy())
-            fig.savefig(os.path.join(f'ddim_test{j}.jpg'))
-            plt.close(fig)
+            for i in range(n_sample):
+                fig = visualize_3d_and_2d_skeletons(x_gen_ddim[i].cpu().numpy(), conditioning_input[0].cpu().numpy())
+                fig.savefig(os.path.join(f'ddim_test{j}.jpg'))
+                plt.close(fig)
 
