@@ -178,21 +178,9 @@ ddim_sampler = DDIMSampler(ddpm.nn_model, ddpm.betas, ddpm.n_T, device)
 checkpoint = torch.load('pose_ddpm_runs/run_20240730_084456/model_299.pth', map_location=device) # 25 steps
 ddpm.load_state_dict(checkpoint['model_state_dict']) # не работает загрузка
 
-'''
-# hack load
-state_dict = OrderedDict()
-for key in checkpoint.keys():
-    if key.startswith('nn_model'):
-        new_key = key.replace('nn_model.', '')
-        state_dict[new_key] = checkpoint[key]
-
-# Load the state_dict into the model
-ddpm.load_state_dict(state_dict, strict=False)
-'''
-
 dataset = PosesDataset(how_many_2d_poses_to_generate=2, use_additional_augment=False, split='train')
-item = dataset[1000]
-input_tensor  = torch.tensor(item[0]['skeletons_2d'], dtype=torch.float32).unsqueeze(0)
+conditioning_target = dataset[1000]
+conditioning_input  = torch.tensor(conditioning_target[0]['skeletons_2d'], dtype=torch.float32).unsqueeze(0)
 
 torch.inference_mode()
 
@@ -202,27 +190,18 @@ ddpm.eval()
 with torch.no_grad():
     n_sample = 1
     w = 1.5
-    # x_gen, x_gen_store = ddpm.sample(n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device))
-    # start_time = time.time()
-    # x_t = torch.randn(n_sample, 17, 3).to(device)
-    # x_gen = ddim_sampler.sample(x_t, n_steps=50, eta=0.0)  # You can adjust n_steps and eta
-    # x_gen = ddim_sampler.ddim_sample_loop(shape, 50, guide_w=0.0, conditioning=x_2d_samples, n_steps=50, eta=0.0)
-    # end_time = time.time()
 
     for j in range(0, 15):
         # DDIM sampling
         start_time = time.time()
-        x_gen_ddim = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device), steps=10, eta=1.0)
+        x_gen_ddim = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=conditioning_input[0].to(device), steps=10, eta=1.0)
         end_time = time.time()
-
-
 
         ddim_sampling_time = (end_time - start_time) * 1000 / n_sample
         print(f"Average DDIM sampling time per pose (w={w}): {ddim_sampling_time:.2f} ms")
 
-
         for i in range(n_sample):
-            fig = visualize_3d_and_2d_skeletons(x_gen_ddim[i].cpu().numpy(), input_tensor[0].cpu().numpy())
+            fig = visualize_3d_and_2d_skeletons(x_gen_ddim[i].cpu().numpy(), conditioning_input[0].cpu().numpy())
             fig.savefig(os.path.join(f'ddim_test{j}.jpg'))
             plt.close(fig)
 

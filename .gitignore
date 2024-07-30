@@ -10,3 +10,4 @@ processed_folders/
 *.pkl 
 # *.pth
 *.mp4
+*.pth
