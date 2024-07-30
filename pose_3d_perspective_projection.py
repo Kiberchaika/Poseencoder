@@ -11,7 +11,10 @@ def load_3d_keypoints_dataset(dataset_path):
         return dataset
 
 # Load the skeleton data
-skeletons = load_3d_keypoints_dataset("/media/k4_nas/admin/Киберчайка/Датасеты/BEDLAM/processed_3d_keypoints/3d_skeletons_dataset.pkl")
+skeletons = None 
+def load_skeletons_dataset():
+    global skeletons
+    skeletons = load_3d_keypoints_dataset("/media/k4_nas/admin/Киберчайка/Датасеты/BEDLAM/processed_3d_keypoints/3d_skeletons_dataset.pkl")
 
 def rotate_skeleton(skeleton, x_angle, y_angle, z_angle):
     def rotation_matrix(axis, angle):
