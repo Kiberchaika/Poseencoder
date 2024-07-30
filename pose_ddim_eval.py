@@ -163,7 +163,7 @@ def plot_2d_skeleton(ax, skeleton):
 # Set device
 device = "cuda:1" if torch.cuda.is_available() else "cpu"
 n_feat = 512
-n_T = 50
+n_T = 25
 ws_test = [0.0, 0.5, 2.0]
 
 # Initialize model
@@ -174,7 +174,8 @@ ddim_sampler = DDIMSampler(ddpm.nn_model, ddpm.betas, ddpm.n_T, device)
 
 
 # Load checkpoint
-checkpoint = torch.load('/home/k4/Projects/Poseencoder/pose_ddpm_runs/run_20240730_095911/model_94.pth', map_location=device)
+# checkpoint = torch.load('pose_ddpm_runs/run_20240730_095911/model_94.pth', map_location=device) # 50 steps
+checkpoint = torch.load('pose_ddpm_runs/run_20240730_084456/model_299.pth', map_location=device) # 25 steps
 ddpm.load_state_dict(checkpoint['model_state_dict']) # не работает загрузка
 
 '''
@@ -211,7 +212,7 @@ with torch.no_grad():
     for j in range(0, 15):
         # DDIM sampling
         start_time = time.time()
-        x_gen_ddim = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device), steps=5, eta=1.0)
+        x_gen_ddim = sample_ddim(ddim_sampler, n_sample, (17, 3), device, guide_w=w, conditioning=input_tensor[0].to(device), steps=10, eta=1.0)
         end_time = time.time()
 
 
