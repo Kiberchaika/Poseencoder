@@ -20,6 +20,7 @@ import math
 import time
 
 import argparse
+import gin
 
 def visualize_3d_and_2d_skeletons(skeleton_3d, skeletons_2d):
     fig = plt.figure(figsize=(15, 5))
@@ -225,9 +226,10 @@ def ddpm_schedules(beta1, beta2, T):
     }
 
 class DDPM(nn.Module):
-    def __init__(self, nn_model, betas, n_T, device, drop_prob=0.1):
+    def __init__(self, nn_model, betas, n_T, device, drop_prob=0.1, n_feat=256):
         super(DDPM, self).__init__()
         self.nn_model = nn_model.to(device)
+        self.n_feat = n_feat
 
         for k, v in ddpm_schedules(betas[0], betas[1], n_T).items():
             self.register_buffer(k, v)
@@ -238,11 +240,25 @@ class DDPM(nn.Module):
         self.loss_mse = nn.MSELoss()
 
         self.betas = betas
+    
+    def save(self, path, epoch, optimizer, train_loss, val_loss):
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': self.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'train_loss': train_loss,
+            'val_loss': val_loss,
+            'n_feat': self.n_feat,
+            'n_T': self.n_T,
+        }, path)
 
-        self.n_T = n_T
-        self.device = device
-        self.drop_prob = drop_prob
-        self.loss_mse = nn.MSELoss()
+    @classmethod
+    def load(cls, path, device):
+        checkpoint = torch.load(path, map_location=device)
+        model = cls(ContextPoseUnet, (1e-4, 0.02), checkpoint['n_T'], device, n_feat=checkpoint['n_feat'])
+        model.load_state_dict(checkpoint['model_state_dict'])
+        return model, checkpoint
+
 
     def get_alphas_cumprod(self):
         return self.alphabar_t
@@ -323,30 +339,30 @@ def fig_to_tensor(fig):
     image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
     return ToTensor()(image)
 
-def train_pose(ckpt_path=None):
-    n_epoch = 200 # was 100
-    batch_size = 32
-    n_T = 50
+@gin.configurable
+def train_pose(n_epoch=200, batch_size=32, n_T=50, n_feat=256, lrate=1e-4, ckpt_path=None, run_name=None):
     device = "cuda:1" if torch.cuda.is_available() else "cpu"
-    n_feat = 256
-    lrate = 1e-4
     save_model = True
     base_save_dir = './pose_ddpm_runs/'
     ws_test = [0.0, 0.5, 2.0]
 
-    # Create a timestamped directory for this run
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = f"run_{timestamp}"
+    # Create a directory for this run
+    if run_name is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"run_{timestamp}"
     save_dir = os.path.join(base_save_dir, run_name)
     os.makedirs(save_dir, exist_ok=True)
 
-    ddpm = DDPM(nn_model=ContextPoseUnet(in_features=17*3, n_feat=n_feat), betas=(1e-4, 0.02), n_T=n_T, device=device, drop_prob=0.1)
+    # Save the config
+    with open(os.path.join(save_dir, 'config.gin'), 'w') as f:
+        f.write(gin.operative_config_str())
+
+    ddpm = DDPM(ContextPoseUnet, (1e-4, 0.02), n_T, device, n_feat=n_feat)
     ddpm.to(device)
 
     start_epoch = 0
     if ckpt_path:
-        checkpoint = torch.load(ckpt_path, map_location=device)
-        ddpm.load_state_dict(checkpoint['model_state_dict'])
+        ddpm, checkpoint = DDPM.load(ckpt_path, device)
         start_epoch = checkpoint['epoch'] + 1
         print(f"Resuming training from epoch {start_epoch}")
 
@@ -362,7 +378,7 @@ def train_pose(ckpt_path=None):
     if ckpt_path:
         optim.load_state_dict(checkpoint['optimizer_state_dict'])
 
-    # Initialize TensorBoard writer with the new save directory
+    # Initialize TensorBoard writer
     writer = SummaryWriter(log_dir=save_dir)
 
     for ep in range(start_epoch, n_epoch):
@@ -433,13 +449,7 @@ def train_pose(ckpt_path=None):
 
         if save_model:
             model_save_path = os.path.join(save_dir, f"model_{ep}.pth")
-            torch.save({
-                'epoch': ep,
-                'model_state_dict': ddpm.state_dict(),
-                'optimizer_state_dict': optim.state_dict(),
-                'train_loss': avg_train_loss,
-                'val_loss': avg_val_loss,
-            }, model_save_path)
+            ddpm.save(model_save_path, ep, optim, avg_train_loss, avg_val_loss)
             print(f'Saved model at {model_save_path}')
 
     writer.close()
@@ -447,7 +457,25 @@ def train_pose(ckpt_path=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train DDPM for 3D pose generation")
+    parser.add_argument("--config", type=str, default="default.gin", help="Path to the gin config file")
     parser.add_argument("--ckpt", type=str, help="Path to checkpoint file to resume training from", default=None)
+    parser.add_argument("--name", type=str, help="Name for the run", default=None)
+    parser.add_argument("--n_T", type=int, help="Override n_T from config")
+    parser.add_argument("--n_feat", type=int, help="Override n_feat from config")
+    parser.add_argument("--lrate", type=float, help="Override learning rate from config")
+    parser.add_argument("--batch_size", type=int, help="Override batch size from config")
     args = parser.parse_args()
 
-    train_pose(ckpt_path=args.ckpt)
+    gin.parse_config_file(args.config)
+    
+    # Override config with command line arguments
+    if args.n_T:
+        gin.bind_parameter('train_pose.n_T', args.n_T)
+    if args.n_feat:
+        gin.bind_parameter('train_pose.n_feat', args.n_feat)
+    if args.lrate:
+        gin.bind_parameter('train_pose.lrate', args.lrate)
+    if args.batch_size:
+        gin.bind_parameter('train_pose.batch_size', args.batch_size)
+
+    train_pose(ckpt_path=args.ckpt, run_name=args.name)

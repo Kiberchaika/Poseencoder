@@ -44,13 +44,13 @@ def main(dataset_path):
     centroids, skeletons = load_motions_data(dataset_path)
     print("Loading data done")
 
-    # print("Adding data to encoders...")
-    # for skeleton in skeletons:
-    #     upper_encoder.add(skeleton[upper_body_indices])
-    #     lower_encoder.add(skeleton[lower_body_indices])
-    #     l_arm_encoder.add(skeleton[l_arm_body_indices])
-    #     r_arm_encoder.add(skeleton[r_arm_body_indices])
-    # print("Adding data to encoders done")
+    print("Adding data to encoders...")
+    for skeleton in skeletons:
+        upper_encoder.add(skeleton[upper_body_indices])
+        lower_encoder.add(skeleton[lower_body_indices])
+        l_arm_encoder.add(skeleton[l_arm_body_indices])
+        r_arm_encoder.add(skeleton[r_arm_body_indices])
+    print("Adding data to encoders done")
 
     # print("Fitting models...")
     # upper_encoder.fit()
@@ -76,6 +76,8 @@ def main(dataset_path):
     # Example skeleton for encoding (using the first centroid)
     example_skeleton = centroids[0]
 
+    print(example_skeleton)
+
     print("Encoding example skeleton...")
     ts = time.time()
     for _ in range(1000):
@@ -94,10 +96,12 @@ def main(dataset_path):
 
 
     print("Generating embedding images...")
+    # Forcing ranges to -8, -6, 31, 16
+    ranges = {"xmin": -8, "ymin": -6, "xmax": 31, "ymax": 16}
     os.makedirs("emb", exist_ok=True)
     for i in range(1):
         generate_embedding_images_kmeans(
-            centroids,
+            centroids, ranges,
             upper_embedding_centroids, lower_embeddings_centroids,
             l_arm_embeddings_centroids, r_arm_embeddings_centroids,
             upper_body_indices, lower_body_indices,

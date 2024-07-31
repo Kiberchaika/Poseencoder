@@ -57,12 +57,18 @@ def generate_embedding_images(
             else:
                 draw.line([keypoints[i], keypoints[j]], fill=other_color, width=10)
 
-    def create_grid_image(embedding, filename, points_2d=None, keypoint_indices=None):
+    def create_grid_image(embedding, filename, points_2d=None, keypoint_indices=None, force_range=False, ranges=None):
         """Create a grid image for embedding points."""
 
-        # Determine grid bounds
-        x_min, y_min = np.min(embedding, axis=0)
-        x_max, y_max = np.max(embedding, axis=0)
+        if not force_range:
+            # Determine grid bounds
+            x_min, y_min = np.min(embedding, axis=0)
+            x_max, y_max = np.max(embedding, axis=0)
+        else:
+            x_min = ranges["xmin"]
+            y_min = ranges["ymin"]
+            x_max = ranges["xmax"]
+            y_max = ranges["ymax"]
 
         # Create mesh grid
         x_bins = np.linspace(x_min, x_max, grid_size[0] + 1)
@@ -136,7 +142,7 @@ def generate_embedding_images(
     r_arm_range = create_grid_image(r_arm_embeddings, r_arm_filename, points_2d=r_arm_2d_points, keypoint_indices=r_arm_body_indices)
 
 def generate_embedding_images_kmeans(
-                            centroids,
+                            centroids, ranges,
                             upper_centroids_embeddings,
                             lower_centroids_embeddings,
                             l_arm_centroids_embeddings,
@@ -190,12 +196,21 @@ def generate_embedding_images_kmeans(
         
         return scaled_keypoints
 
-    def create_grid_image(embeddings_centroid, filename, highlight_indices):
+    def create_grid_image(embeddings_centroid, filename, highlight_indices, force_range=False, ranges=None):
         """Create a grid image for embedding points."""
 
-        # Determine grid bounds
-        x_min, y_min = np.min(embeddings_centroid, axis=0)
-        x_max, y_max = np.max(embeddings_centroid, axis=0)
+        if not force_range:
+            # Determine grid bounds
+            x_min, y_min = np.min(embeddings_centroid, axis=0)
+            x_max, y_max = np.max(embeddings_centroid, axis=0)
+        else:
+            x_min = ranges["xmin"]
+            y_min = ranges["ymin"]
+            x_max = ranges["xmax"]
+            y_max = ranges["ymax"]
+
+
+        print(f"determined grid bounds {x_min}, {y_min}, {x_max}, {y_max}")
 
         # Create mesh grid
         x_bins = np.linspace(x_min, x_max, grid_size[0] + 1)
@@ -238,9 +253,9 @@ def generate_embedding_images_kmeans(
         return [x_min, y_min, x_max, y_max]
 
     # Generate images for upper, lower, left arm, and right arm embeddings
-    upper_body_range = create_grid_image(upper_centroids_embeddings, upper_filename, upper_body_indices)
-    lower_body_range = create_grid_image(lower_centroids_embeddings, lower_filename, lower_body_indices)
-    l_arm_range = create_grid_image(l_arm_centroids_embeddings, l_arm_filename, l_arm_body_indices)
-    r_arm_range = create_grid_image(r_arm_centroids_embeddings, r_arm_filename, r_arm_body_indices)
+    upper_body_range = create_grid_image(upper_centroids_embeddings, upper_filename, upper_body_indices, force_range=True, ranges=ranges)
+    lower_body_range = create_grid_image(lower_centroids_embeddings, lower_filename, lower_body_indices, force_range=True, ranges=ranges)
+    l_arm_range = create_grid_image(l_arm_centroids_embeddings, l_arm_filename, l_arm_body_indices, force_range=True, ranges=ranges)
+    r_arm_range = create_grid_image(r_arm_centroids_embeddings, r_arm_filename, r_arm_body_indices, force_range=True, ranges=ranges)
 
     return upper_body_range, lower_body_range, l_arm_range, r_arm_range
