@@ -6,6 +6,7 @@ from tqdm import tqdm
 from torch.utils.data import Dataset
 from pose_3d_perspective_projection import load_3d_keypoints_dataset, rotate_skeleton, randomize_limbs, perspective_projection
 from umap_landmarks_encoder import UMAPLandmarksEncoder
+import torch
 
 class PosesDataset(Dataset):
     def __init__(self, use_additional_augment, split: str):
@@ -75,6 +76,59 @@ class PosesDataset(Dataset):
         normalized_points = projected_skeleton / max_distance
 
         return normalized_points
+    
+    def return_regularisation_batch(self, batch):
+        batch_size = batch['skeleton_3d'].size(0)
+        reg_batches = {}
+        
+        for part, indices in [('upper', self.upper_body_indices), 
+                              ('lower', self.lower_body_indices), 
+                              ('l_arm', self.l_arm_body_indices), 
+                              ('r_arm', self.r_arm_body_indices)]:
+            
+            # Pick a random sample for the current body part
+            random_idx = torch.randint(0, batch_size, (1,)).item()
+            
+            # Create a copy of the input batch structure
+            reg_batch = {
+                'embeddings': {k: v.clone() for k, v in batch['embeddings'].items()},
+                'skeleton_2d': [],
+                'skeleton_3d': []
+            }
+
+            # Fix the embedding for the current part across all samples
+            fixed_embedding = batch['embeddings'][part][random_idx].clone().detach()
+            reg_batch['embeddings'][part] = fixed_embedding.repeat(batch_size, 1)
+
+            fixed_part_3d = batch['skeleton_3d'][random_idx, indices].clone().detach()
+
+            # Randomize all parts except the current one and set the fixed part for all samples
+            for i in range(batch_size):
+                new_skeleton = batch['skeleton_3d'][i].clone()
+                for other_part, other_indices in [('upper', self.upper_body_indices), 
+                                                  ('lower', self.lower_body_indices), 
+                                                  ('l_arm', self.l_arm_body_indices), 
+                                                  ('r_arm', self.r_arm_body_indices)]:
+                    if other_part != part:
+                        random_skeleton_idx = torch.randint(0, len(self.skeletons), (1,)).item()
+                        random_skeleton = torch.tensor(self.skeletons[random_skeleton_idx], dtype=torch.float32)
+                        new_skeleton[other_indices] = random_skeleton[other_indices]
+                    else:
+                        new_skeleton[indices] = fixed_part_3d
+
+                reg_batch['skeleton_3d'].append(new_skeleton)
+                
+                # Project 3D skeleton to 2D and normalize
+                projected_2d = self.project_to_2d_and_normalize(new_skeleton.cpu().numpy())
+                reg_batch['skeleton_2d'].append(torch.tensor(projected_2d, dtype=torch.float32))
+
+            # Convert lists to tensors
+            reg_batch['skeleton_3d'] = torch.stack(reg_batch['skeleton_3d'])
+            reg_batch['skeleton_2d'] = torch.stack(reg_batch['skeleton_2d'])
+
+            reg_batches[part] = reg_batch
+
+        return reg_batches
 
     def __getitem__(self, idx):
         skeleton = self.skeletons[idx].copy().astype(np.float32)
@@ -107,7 +161,8 @@ class PosesDataset(Dataset):
 
         return {
             "embeddings": embeddings,
-            "skeleton_2d": normalized_points
+            "skeleton_2d": normalized_points,
+            "skeleton_3d": skeleton
         }, 0.0  # dummy data to prevent breaking pytorch lightning
 
     def __del__(self):

@@ -20,66 +20,7 @@ BONES_COCO = [
 ]
 
 
-# class ConvBlock(nn.Module):
-#     def __init__(self, in_channels, out_channels):
-#         super(ConvBlock, self).__init__()
-#         self.conv = nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1)
-#         self.bn = nn.BatchNorm1d(out_channels)
-#         self.relu = nn.ReLU(inplace=False)  # Changed to non-inplace ReLU
 
-#     def forward(self, x):
-#         return self.relu(self.bn(self.conv(x)))
-
-# class ResidualBlock(nn.Module):
-#     def __init__(self, channels):
-#         super(ResidualBlock, self).__init__()
-#         self.conv1 = ConvBlock(channels, channels)
-#         self.conv2 = ConvBlock(channels, channels)
-#         self.relu = nn.ReLU(inplace=False)  # Changed to non-inplace ReLU
-
-#     def forward(self, x):
-#         residual = x
-#         out = self.conv1(x)
-#         out = self.conv2(out)
-#         out = out + residual  # Changed from += to +
-#         return self.relu(out)
-
-# class EnhancedPoseRegressor(nn.Module):
-#     def __init__(self, input_dim=34, output_dim=8, num_residual_blocks=3):
-#         super(EnhancedPoseRegressor, self).__init__()
-        
-#         self.input_proj = nn.Linear(input_dim, 64)
-        
-#         self.conv_blocks = nn.Sequential(
-#             ConvBlock(2, 32),
-#             ConvBlock(32, 64),
-#             ConvBlock(64, 128)
-#         )
-        
-#         self.residual_blocks = nn.Sequential(
-#             *[ResidualBlock(128) for _ in range(num_residual_blocks)]
-#         )
-        
-#         self.global_avg_pool = nn.AdaptiveAvgPool1d(1)
-        
-#         self.fc_layers = nn.Sequential(
-#             nn.Linear(128, 64),
-#             nn.ReLU(inplace=False),  # Changed to non-inplace ReLU
-#             nn.Linear(64, output_dim)
-#         )
-
-#     def forward(self, x):
-#         batch_size = x.size(0)
-#         x = self.input_proj(x)
-#         x = x.view(batch_size, 2, -1)  # Reshape to (batch_size, 2, 32) for 32 joints
-        
-#         x = self.conv_blocks(x)
-#         x = self.residual_blocks(x)
-        
-#         x = self.global_avg_pool(x).squeeze(-1)
-#         x = self.fc_layers(x)
-        
-#         return x
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_features, out_features):
@@ -154,6 +95,7 @@ class PoseRegressionModel:
         current_time = datetime.now().strftime('%b%d_%H-%M-%S')
         self.writer = SummaryWriter(f'fork_runs/FORK_{current_time}')
         self.knn = FastKNN()
+        self.reg_weight = 0.25
 
     def plot_and_compare_skeletons(self, skeleton, nearest_skeleton, step):
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
@@ -187,6 +129,41 @@ class PoseRegressionModel:
 
     def denormalize_umap_predictions(self, preds):
         return preds * 37 - 7
+    
+    def compute_regularization_loss(self, dataset, inputs):
+        reg_batches = dataset.return_regularisation_batch(inputs)
+        reg_losses = {}
+        
+        for part, batch in reg_batches.items():
+            if part == 'upper':
+                dim_start, dim_end = 0, 1
+            elif part == 'lower':
+                dim_start, dim_end = 2, 3
+            elif part == 'l_arm':
+                dim_start, dim_end = 4, 5
+            elif part == 'r_arm':
+                dim_start, dim_end = 6, 7
+            else:
+                raise ValueError(f"Unknown body part: {part}")
+
+            inputs = batch['skeleton_2d'].view(batch['skeleton_2d'].size(0), -1).to(self.device)
+        
+            batch_embeddings = batch['embeddings']
+            targets = torch.cat([
+                self.normalize_umap_targets(batch_embeddings['upper']),
+                self.normalize_umap_targets(batch_embeddings['lower']),
+                self.normalize_umap_targets(batch_embeddings['l_arm']),
+                self.normalize_umap_targets(batch_embeddings['r_arm'])
+            ], dim=1).float().to(self.device)
+        
+            outputs = self.model(inputs)
+            variance = outputs[:, dim_start:dim_end].var(dim=0).mean()
+            # loss = self.criterion(outputs, targets)
+
+            
+            reg_losses[part] = variance
+        
+        return reg_losses
 
     def train(self, train_dataset, val_dataset, batch_size=128, num_epochs=100, patience=10):
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -247,6 +224,7 @@ class PoseRegressionModel:
         for epoch in range(num_epochs):
             self.model.train()
             train_loss = 0.0
+            train_reg_loss = {part: 0.0 for part in ['upper', 'lower', 'l_arm', 'r_arm']}
             progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}")
             for batch in progress_bar:
                 inputs = batch[0]['skeleton_2d'].view(batch[0]['skeleton_2d'].size(0), -1).to(self.device)
@@ -262,13 +240,23 @@ class PoseRegressionModel:
                 self.optimizer.zero_grad()
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
-                loss.backward()
-                # torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+
+                reg_losses = self.compute_regularization_loss(train_dataset, batch[0])
+                reg_loss = sum(reg_losses.values())
+                total_loss = loss + self.reg_weight * reg_loss
+
+                total_loss.backward()
+
+
                 self.optimizer.step()
 
                 train_loss += loss.item()
-                progress_bar.set_postfix({'loss': f'{loss.item():.4f}'})
+                for part, rl in reg_losses.items():
+                    train_reg_loss[part] += rl.item()
+
+                progress_bar.set_postfix({'loss': f'{loss.item():.4f}', 'reg_loss': f'{reg_loss.item():.4f}'})
                 self.writer.add_scalar('Loss/BatchTrain', loss.item(), step)
+                self.writer.add_scalar('Loss/RegLoss', reg_loss.item(), step)
 
 
                 # Find nearest neighbor and visualize
@@ -284,15 +272,13 @@ class PoseRegressionModel:
             
 
             self.model.eval()
-            
-            
-            print("Computing validation...")
-            
             val_loss = 0.0
+            val_reg_loss = {part: 0.0 for part in ['upper', 'lower', 'l_arm', 'r_arm']}
+            
+            print("Computing validation...")            
             with torch.no_grad():
                 for batch in val_loader:
                     inputs = batch[0]['skeleton_2d'].view(batch[0]['skeleton_2d'].size(0), -1).to(self.device)
-            
                     batch_embeddings = batch[0]['embeddings']
                     targets = torch.cat([
                         self.normalize_umap_targets(batch_embeddings['upper']),
@@ -304,15 +290,24 @@ class PoseRegressionModel:
                     outputs = self.model(inputs)
                     loss = self.criterion(outputs, targets)
                     val_loss += loss.item()
+
+                    reg_losses = self.compute_regularization_loss(val_dataset, batch[0])
+                    for part, rl in reg_losses.items():
+                        val_reg_loss[part] += rl.item()
             
             train_loss /= len(train_loader)
             val_loss /= len(val_loader)
             
             self.writer.add_scalar('Loss/EpochTrain', train_loss, step)
             self.writer.add_scalar('Loss/Validation', val_loss, step)
+            for part in ['upper', 'lower', 'l_arm', 'r_arm']:
+                self.writer.add_scalar(f'RegLoss/Train/{part}', train_reg_loss[part], epoch)
+                self.writer.add_scalar(f'RegLoss/Validation/{part}', val_reg_loss[part], epoch)
 
             print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
-            
+            print(f"Train Reg Loss: {train_reg_loss}")
+            print(f"Val Reg Loss: {val_reg_loss}")
+
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 epochs_no_improve = 0

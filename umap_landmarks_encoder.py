@@ -58,7 +58,7 @@ class UMAPLandmarksEncoder(BaseLandmarksEncoder):
     def save(self, filename):
         with open(filename, 'wb') as f:
             pickle.dump({
-                'umap_model': self.umap_model,
+                # 'umap_model': self.umap_model,
                 'embeddings': self.embeddings,
                 'data': self.data,
                 'input_landmarks_shape': self.input_landmarks_shape,
@@ -68,7 +68,7 @@ class UMAPLandmarksEncoder(BaseLandmarksEncoder):
     def load(self, filename):
         with open(filename, 'rb') as f:
             data = pickle.load(f)
-            self.umap_model = data['umap_model']
+            # self.umap_model = data['umap_model']
             self.embeddings = data['embeddings']
             self.data = data['data']
             self.input_landmarks_shape = data['input_landmarks_shape']
