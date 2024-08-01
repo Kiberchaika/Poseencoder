@@ -14,7 +14,9 @@ import pickle
 
 BONES_COCO = [
     (0, 1), (0, 2), (1, 3), (2, 4),  # Face
-    (5, 6), (5, 7), (7, 9), (6, 8), (8, 10),  # Arms
+    (5, 6), # Shoulders
+    (5, 7), (7, 9), # Left arm
+    (6, 8), (8, 10),  # Right arm
     (5, 11), (6, 12), (11, 12),  # Torso
     (11, 13), (13, 15), (12, 14), (14, 16),  # Legs
     (0, 5), (0, 6)
@@ -114,40 +116,48 @@ class PoseRegressionModel:
         self.l_arm_body_indices = [5, 7, 9, 11]
         self.r_arm_body_indices = [6, 8, 10, 12]
 
-        self.part_indices = {
-            'upper': self.upper_body_indices,
-            'lower': self.lower_body_indices,
-            'l_arm': self.l_arm_body_indices,
-            'r_arm': self.r_arm_body_indices
-        }
-        self.part_output_indices = {
-            'upper': [0, 1],
-            'lower': [2, 3],
-            'l_arm': [4, 5],
-            'r_arm': [6, 7]
-        }
+        # self.part_indices = {
+        #     'upper': self.upper_body_indices,
+        #     'lower': self.lower_body_indices,
+        #     'l_arm': self.l_arm_body_indices,
+        #     'r_arm': self.r_arm_body_indices
+        # }
+        # self.part_output_indices = {
+        #     'upper': [0, 1],
+        #     'lower': [2, 3],
+        #     'l_arm': [4, 5],
+        #     'r_arm': [6, 7]
+        # }
 
 
     def plot_and_compare_skeletons(self, skeleton, nearest_skeleton, predicted_embeddings, step):
-        fig, axs = plt.subplots(2, 2, figsize=(16, 16))
-        fig.suptitle('Pose Analysis', fontsize=16)
+        fig, axs = plt.subplots(2, 2, figsize=(20, 20), dpi=100)
+        fig.suptitle('Pose Analysis', fontsize=24)
+
+        # Helper function to add index labels
+        def add_index_labels(ax, points):
+            for i, (x, y) in enumerate(points):
+                ax.text(x, y, str(i), fontsize=10, ha='center', va='center', 
+                        bbox=dict(facecolor='white', edgecolor='none', alpha=0.7))
 
         # Plot 1: Original 2D Skeleton
-        axs[0, 0].scatter(skeleton[:, 0], skeleton[:, 1], c='b', s=20)
+        axs[0, 0].scatter(skeleton[:, 0], skeleton[:, 1], c='b', s=50)
         for start, end in BONES_COCO:
             axs[0, 0].plot([skeleton[start, 0], skeleton[end, 0]],
-                           [skeleton[start, 1], skeleton[end, 1]], 'r-')
-        axs[0, 0].set_title('Original 2D Skeleton')
+                        [skeleton[start, 1], skeleton[end, 1]], 'r-', linewidth=2)
+        add_index_labels(axs[0, 0], skeleton)
+        axs[0, 0].set_title('Original 2D Skeleton', fontsize=18)
         axs[0, 0].set_aspect('equal')
         axs[0, 0].set_xticks([])
         axs[0, 0].set_yticks([])
 
         # Plot 2: Nearest Neighbor 2D Skeleton
-        axs[0, 1].scatter(nearest_skeleton[:, 0], nearest_skeleton[:, 1], c='b', s=20)
+        axs[0, 1].scatter(nearest_skeleton[:, 0], nearest_skeleton[:, 1], c='b', s=50)
         for start, end in BONES_COCO:
             axs[0, 1].plot([nearest_skeleton[start, 0], nearest_skeleton[end, 0]],
-                           [nearest_skeleton[start, 1], nearest_skeleton[end, 1]], 'r-')
-        axs[0, 1].set_title('Nearest Neighbor 2D Skeleton')
+                        [nearest_skeleton[start, 1], nearest_skeleton[end, 1]], 'r-', linewidth=2)
+        add_index_labels(axs[0, 1], nearest_skeleton)
+        axs[0, 1].set_title('Nearest Neighbor 2D Skeleton', fontsize=18)
         axs[0, 1].set_aspect('equal')
         axs[0, 1].set_xticks([])
         axs[0, 1].set_yticks([])
@@ -156,26 +166,90 @@ class PoseRegressionModel:
         colors = ['r', 'g', 'b', 'y']
         labels = ['upper', 'lower', 'l_arm', 'r_arm']
         for i, (color, label) in enumerate(zip(colors, labels)):
-            axs[1, 0].scatter(predicted_embeddings[i*2], predicted_embeddings[i*2+1], c=color, label=label)
-        axs[1, 0].set_title('PCA Coordinates')
+            axs[1, 0].scatter(predicted_embeddings[i*2], predicted_embeddings[i*2+1], c=color, s=300, label=label)
+        axs[1, 0].set_title('PCA Coordinates', fontsize=18)
         axs[1, 0].set_xlim(0, 1)
         axs[1, 0].set_ylim(0, 1)
-        axs[1, 0].legend()
+        axs[1, 0].legend(fontsize=14)
+        axs[1, 0].tick_params(axis='both', which='major', labelsize=12)
 
         # Plot 4: Decoded Landmarks
+        all_landmarks = np.zeros((17, 3))  # Assuming 17 total landmarks for the full body
+        colors_map = {}
         for i, (color, label) in enumerate(zip(colors, labels)):
             part_embedding = predicted_embeddings[i*2:i*2+2]
             decoded_landmarks = self.encoders[label].decode(part_embedding)
             if isinstance(decoded_landmarks, torch.Tensor):
                 decoded_landmarks = decoded_landmarks.cpu().numpy()
-            axs[1, 1].scatter(decoded_landmarks[:, 0], decoded_landmarks[:, 1], c=color, label=label)
-        axs[1, 1].set_title('Decoded Landmarks')
-        axs[1, 1].legend()
+            
+            if label == 'upper':
+                indices = self.upper_body_indices
+            elif label == 'lower':
+                indices = self.lower_body_indices
+            elif label == 'l_arm':
+                indices = self.l_arm_body_indices
+            elif label == 'r_arm':
+                indices = self.r_arm_body_indices
+            
+            all_landmarks[indices] = decoded_landmarks
+            for idx in indices:
+                colors_map[idx] = color
+
+        # Plot 4: Decoded Landmarks
+        all_landmarks = np.zeros((17, 3))  # Assuming 17 total landmarks for the full body
+        colors_map = {}
+        for i, (color, label) in enumerate(zip(colors, labels)):
+            part_embedding = predicted_embeddings[i*2:i*2+2]
+            decoded_landmarks = self.encoders[label].decode(part_embedding)
+            if isinstance(decoded_landmarks, torch.Tensor):
+                decoded_landmarks = decoded_landmarks.cpu().numpy()
+            
+            if label == 'upper':
+                indices = self.upper_body_indices
+            elif label == 'lower':
+                indices = self.lower_body_indices
+            elif label == 'l_arm':
+                indices = self.l_arm_body_indices
+            elif label == 'r_arm':
+                indices = self.r_arm_body_indices
+            
+            all_landmarks[indices] = decoded_landmarks
+            for idx in indices:
+                colors_map[idx] = color
+
+        # Plot landmarks
+        for i in range(17):
+            if i in colors_map:
+                x, y = all_landmarks[i, 0], all_landmarks[i, 1]
+                axs[1, 1].scatter(x, y, c=colors_map[i], s=100)
+                axs[1, 1].text(x, y, str(i), fontsize=10, ha='center', va='center',
+                            bbox=dict(facecolor='white', edgecolor='none', alpha=0.7))
+
+        # Define the correct connections for each body part
+        upper_connections = [(4, 5), (4, 6), (5, 6)]
+        lower_connections = [(11, 13), (13, 15), (12, 14), (14, 16), (11, 12)]
+        l_arm_connections = [(5, 7), (7, 9), (5, 11)]
+        r_arm_connections = [(6, 8), (8, 10), (6, 12)]
+
+        # Draw lines connecting landmarks
+        for connections, label in zip([upper_connections, lower_connections, l_arm_connections, r_arm_connections],
+                                    ['upper', 'lower', 'l_arm', 'r_arm']):
+            color = colors[labels.index(label)]
+            for start, end in connections:
+                if start in colors_map and end in colors_map:
+                    axs[1, 1].plot([all_landmarks[start, 0], all_landmarks[end, 0]],
+                                [all_landmarks[start, 1], all_landmarks[end, 1]], 
+                                c=color, linewidth=1, alpha=0.7)
+
+        axs[1, 1].set_title('Decoded Landmarks', fontsize=18)
+        axs[1, 1].legend(handles=[plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=c, label=l, markersize=10) 
+                                for c, l in zip(colors, labels)], fontsize=14)
+        axs[1, 1].tick_params(axis='both', which='major', labelsize=12)
 
         plt.tight_layout()
         
         buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=200)
+        plt.savefig(buf, format='png')
         buf.seek(0)
         img = plt.imread(buf)
         plt.close(fig)
@@ -218,7 +292,7 @@ class PoseRegressionModel:
         
         return reg_losses
 
-    def train(self, train_dataset, val_dataset, batch_size=256, num_epochs=100, patience=10):
+    def train(self, train_dataset, val_dataset, batch_size=128, num_epochs=100, patience=10):
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
@@ -258,7 +332,7 @@ class PoseRegressionModel:
             torch.save(all_skeletons, skeletons_file)
             print(f"Saved {embeddings_file} and {skeletons_file}")        
             print("Compute knn finished")
-            
+
         self.knn.add(all_embeddings, all_skeletons)
 
         best_val_loss = float('inf')
@@ -286,9 +360,11 @@ class PoseRegressionModel:
 
                 loss = self.criterion(outputs, targets)
 
-                reg_losses = self.compute_regularization_loss(train_dataset, batch[0])
-                reg_loss = sum(reg_losses.values())
-                total_loss = loss + self.reg_weight * reg_loss
+                # reg_losses = self.compute_regularization_loss(train_dataset, batch[0])
+                # reg_loss = sum(reg_losses.values())
+                reg_loss = torch.zeros(1)
+                # total_loss = loss + self.reg_weight * reg_loss
+                total_loss = loss
 
                 total_loss.backward()
                 self.optimizer.step()

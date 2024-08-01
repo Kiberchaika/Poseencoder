@@ -19,8 +19,8 @@ class PosesDatasetPCA(Dataset):
 
         self.upper_body_indices = [4, 5, 6]
         self.lower_body_indices = [11, 12, 13, 14, 15, 16]
-        self.l_arm_body_indices = [5, 7, 9, 11]
-        self.r_arm_body_indices = [6, 8, 10, 12]
+        self.l_arm_body_indices = [5, 7, 9, 11] # 11 is waist
+        self.r_arm_body_indices = [6, 8, 10, 12] # 12 is waist
 
         self.encoders = {
             'upper': PCALandmarksEncoder(input_landmarks_shape=(len(self.upper_body_indices), 3), embedding_shape=(2,)),
@@ -32,10 +32,12 @@ class PosesDatasetPCA(Dataset):
         if fit:
             print(f"Regression PCA dataset: fitting encoders... ({len(self.skeletons)} skeletons)")
             self.fit_encoders()
+            # self.save_cache()
         
         # Initialize the cache
         self.cache_file = f"regression_pca_dataset_caches_{split}.pkl"
-        self.embeddings_cache = self.load_cache()
+        self.embeddings_cache = [None] * len(self.skeletons)
+        # self.embeddings_cache = self.load_cache()
         self.cache_modified = False
 
     def fit_encoders(self):
@@ -86,8 +88,8 @@ class PosesDatasetPCA(Dataset):
         return len(self.skeletons)
     
     def project_to_2d_and_normalize(self, skeleton):
-        x_angle = np.random.uniform(-10, 10)
-        y_angle = np.random.uniform(-40, 40)
+        x_angle = np.random.uniform(-20, 20)
+        y_angle = np.random.uniform(-60, 60)
         z_angle = np.random.uniform(-10, 10)
 
         fov = np.random.uniform(60, 80)
