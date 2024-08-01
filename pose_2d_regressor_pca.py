@@ -51,24 +51,27 @@ class ResidualBlock(nn.Module):
         return out
 
 class PoseRegressor(nn.Module):
-    def __init__(self, input_dim=34, output_dim=8):
+    def __init__(self, input_dim=34, output_dim=8, input_projection_dim=128):
         super(PoseRegressor, self).__init__()
+        # self.model = nn.Sequential(
+        #     nn.Linear(input_dim, 128),
+        #     nn.BatchNorm1d(128),
+        #     nn.ReLU(),
+        #     ResidualBlock(128, 128),
+        #     nn.Linear(128, 64),
+        #     nn.BatchNorm1d(64),
+        #     nn.ReLU(),
+        #     ResidualBlock(64, 64),
+        #     nn.Linear(64, 32),
+        #     nn.BatchNorm1d(32),
+        #     nn.ReLU(),
+        #     nn.Linear(32, output_dim)
+        # )
         self.model = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.BatchNorm1d(128),
+            nn.Linear(input_dim, input_projection_dim),
+            nn.BatchNorm1d(input_projection_dim),
             nn.ReLU(),
-
-            # ResidualBlock(128, 256),
-            # nn.Linear(256, 256),
-            # nn.BatchNorm1d(256),
-            # nn.ReLU(),
-            # ResidualBlock(256, 256),
-            # nn.Linear(256, 128),
-            # nn.BatchNorm1d(128),
-            # nn.ReLU(),
-
-
-            ResidualBlock(128, 128),
+            ResidualBlock(input_projection_dim, 128),
             nn.Linear(128, 64),
             nn.BatchNorm1d(64),
             nn.ReLU(),
@@ -78,6 +81,7 @@ class PoseRegressor(nn.Module):
             nn.ReLU(),
             nn.Linear(32, output_dim)
         )
+
    
     def forward(self, x):
         return self.model(x)
