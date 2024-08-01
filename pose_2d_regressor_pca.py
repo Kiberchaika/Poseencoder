@@ -134,7 +134,7 @@ class PoseRegressionModel:
         # }
 
 
-    def plot_and_compare_skeletons(self, skeleton, nearest_skeleton, predicted_embeddings, step):
+    def plot_and_compare_skeletons(self, skeleton, nearest_skeleton, predicted_embeddings, target, step):
         fig, axs = plt.subplots(2, 2, figsize=(20, 20), dpi=100)
         fig.suptitle('Pose Analysis', fontsize=24)
 
@@ -169,16 +169,33 @@ class PoseRegressionModel:
         # Plot 3: PCA Coordinates
         colors = ['r', 'g', 'b', 'y']
         labels = ['upper', 'lower', 'l_arm', 'r_arm']
+
+        # Assuming you have access to ground truth embeddings
+        ground_truth_embeddings = target.cpu().numpy()  # Adjust this line based on how you store ground truth
+
         for i, (color, label) in enumerate(zip(colors, labels)):
-            axs[1, 0].scatter(predicted_embeddings[i*2], predicted_embeddings[i*2+1], c=color, s=300, label=label)
-        axs[1, 0].set_title('PCA Coordinates', fontsize=18)
+            pred_x, pred_y = predicted_embeddings[i*2], predicted_embeddings[i*2+1]
+            true_x, true_y = ground_truth_embeddings[i*2], ground_truth_embeddings[i*2+1]
+            
+            # Plot predicted point (larger)
+            axs[1, 0].scatter(pred_x, pred_y, c=color, s=300, label=f'{label} (Predicted)', marker='o')
+            
+            # Plot ground truth point (smaller)
+            axs[1, 0].scatter(true_x, true_y, c=color, s=100, label=f'{label} (Ground Truth)', marker='s')
+            
+            # Draw line connecting ground truth to predicted
+            axs[1, 0].plot([true_x, pred_x], [true_y, pred_y], c=color, linestyle='--', alpha=0.7)
+
+        axs[1, 0].set_title('PCA Coordinates: Predicted vs Ground Truth', fontsize=18)
         axs[1, 0].set_xlim(0, 1)
         axs[1, 0].set_ylim(0, 1)
-        axs[1, 0].legend(fontsize=14)
+        axs[1, 0].legend(fontsize=10, loc='center left', bbox_to_anchor=(1, 0.5))
         axs[1, 0].tick_params(axis='both', which='major', labelsize=12)
+        axs[1, 0].set_aspect('equal')
 
-        # Plot 4: Decoded Landmarks
-        all_landmarks = np.zeros((17, 3))  # Assuming 17 total landmarks for the full body
+        # Plot 4: Decoded 3D Landmarks
+        ax = fig.add_subplot(224, projection='3d')
+        all_landmarks = np.zeros((17, 3))
         colors_map = {}
         for i, (color, label) in enumerate(zip(colors, labels)):
             part_embedding = predicted_embeddings[i*2:i*2+2]
@@ -199,35 +216,12 @@ class PoseRegressionModel:
             for idx in indices:
                 colors_map[idx] = color
 
-        # Plot 4: Decoded Landmarks
-        all_landmarks = np.zeros((17, 3))  # Assuming 17 total landmarks for the full body
-        colors_map = {}
-        for i, (color, label) in enumerate(zip(colors, labels)):
-            part_embedding = predicted_embeddings[i*2:i*2+2]
-            decoded_landmarks = self.encoders[label].decode(part_embedding)
-            if isinstance(decoded_landmarks, torch.Tensor):
-                decoded_landmarks = decoded_landmarks.cpu().numpy()
-            
-            if label == 'upper':
-                indices = self.upper_body_indices
-            elif label == 'lower':
-                indices = self.lower_body_indices
-            elif label == 'l_arm':
-                indices = self.l_arm_body_indices
-            elif label == 'r_arm':
-                indices = self.r_arm_body_indices
-            
-            all_landmarks[indices] = decoded_landmarks
-            for idx in indices:
-                colors_map[idx] = color
-
-        # Plot landmarks
+        # Plot 3D landmarks
         for i in range(17):
             if i in colors_map:
-                x, y = all_landmarks[i, 0], all_landmarks[i, 1]
-                axs[1, 1].scatter(x, y, c=colors_map[i], s=100)
-                axs[1, 1].text(x, y, str(i), fontsize=10, ha='center', va='center',
-                            bbox=dict(facecolor='white', edgecolor='none', alpha=0.7))
+                x, z, y = all_landmarks[i]  # Swapped Y and Z
+                ax.scatter(x, y, z, c=colors_map[i], s=100)
+                ax.text(x, y, z, str(i), fontsize=8)
 
         # Define the correct connections for each body part
         upper_connections = [(4, 5), (4, 6), (5, 6)]
@@ -235,20 +229,40 @@ class PoseRegressionModel:
         l_arm_connections = [(5, 7), (7, 9), (5, 11)]
         r_arm_connections = [(6, 8), (8, 10), (6, 12)]
 
-        # Draw lines connecting landmarks
+        # Draw lines connecting landmarks in 3D
         for connections, label in zip([upper_connections, lower_connections, l_arm_connections, r_arm_connections],
                                     ['upper', 'lower', 'l_arm', 'r_arm']):
             color = colors[labels.index(label)]
             for start, end in connections:
                 if start in colors_map and end in colors_map:
-                    axs[1, 1].plot([all_landmarks[start, 0], all_landmarks[end, 0]],
-                                [all_landmarks[start, 1], all_landmarks[end, 1]], 
-                                c=color, linewidth=1, alpha=0.7)
+                    ax.plot([all_landmarks[start, 0], all_landmarks[end, 0]],
+                            [all_landmarks[start, 2], all_landmarks[end, 2]],  # Swapped Y and Z
+                            [all_landmarks[start, 1], all_landmarks[end, 1]],  # Swapped Y and Z
+                            c=color, linewidth=1, alpha=0.7)
 
-        axs[1, 1].set_title('Decoded Landmarks', fontsize=18)
-        axs[1, 1].legend(handles=[plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=c, label=l, markersize=10) 
-                                for c, l in zip(colors, labels)], fontsize=14)
-        axs[1, 1].tick_params(axis='both', which='major', labelsize=12)
+        ax.set_title('Decoded 3D Landmarks', fontsize=18)
+        ax.legend(handles=[plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=c, label=l, markersize=10) 
+                        for c, l in zip(colors, labels)], fontsize=14)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Z')  # Swapped Y and Z
+        ax.set_zlabel('Y')  # Swapped Y and Z
+
+        # Ensure the aspect ratio is equal
+        max_range = np.array([all_landmarks[:, 0].max() - all_landmarks[:, 0].min(),
+                            all_landmarks[:, 2].max() - all_landmarks[:, 2].min(),  # Swapped Y and Z
+                            all_landmarks[:, 1].max() - all_landmarks[:, 1].min()]).max() / 2.0  # Swapped Y and Z
+        mid_x = (all_landmarks[:, 0].max() + all_landmarks[:, 0].min()) * 0.5
+        mid_y = (all_landmarks[:, 2].max() + all_landmarks[:, 2].min()) * 0.5  # Swapped Y and Z
+        mid_z = (all_landmarks[:, 1].max() + all_landmarks[:, 1].min()) * 0.5  # Swapped Y and Z
+        ax.set_xlim(mid_x - max_range, mid_x + max_range)
+        ax.set_ylim(mid_y - max_range, mid_y + max_range)
+        ax.set_zlim(mid_z - max_range, mid_z + max_range)
+
+        # Set the correct aspect ratio
+        ax.set_box_aspect((1, 1, 1))
+
+        # Adjust the view angle for better visibility
+        ax.view_init(elev=20, azim=45)
 
         plt.tight_layout()
         
@@ -385,7 +399,7 @@ class PoseRegressionModel:
                     self.plot_and_compare_skeletons(
                         batch[0]['skeleton_2d'][0].detach().cpu().numpy(),
                         nearest_skeleton[0].detach().cpu().numpy(),
-                        outputs[0].detach().cpu().numpy(),
+                        outputs[0].detach().cpu().numpy(), targets[0],
                         step
                     )
                     print(loss.item())
