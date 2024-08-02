@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import numpy as np
-from regression_dataset_pca_2inputs import PosesDatasetPCA
+from regression_dataset_3inputs_3d import PosesDataset3cam
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 import io
@@ -92,13 +92,13 @@ class FastKNN:
         return self.skeletons[indices[0]], self.embeddings[indices[0]]
     
 class PoseRegressionModel:
-    def __init__(self, input_dim=68, output_dim=51, learning_rate=0.0005):
-        self.device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    def __init__(self, input_dim=17 * 2 * 3, output_dim=51, learning_rate=0.0005):
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.model = PoseRegressor(input_dim, output_dim).to(self.device)
         self.criterion = nn.MSELoss()
         self.optimizer = optim.AdamW(self.model.parameters(), lr=learning_rate)
         current_time = datetime.now().strftime('%b%d_%H-%M-%S')
-        self.modelname = f"PCA2IN_{current_time};"
+        self.modelname = f"3IN_{current_time};"
         self.writer = SummaryWriter(f'pose_3d_regressor_skeleton_runs/{self.modelname}')
         self.knn = FastKNN()
         self.reg_weight = 0.001
@@ -240,44 +240,7 @@ class PoseRegressionModel:
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
-        # Collect all embeddings and skeletons for nearest neighbor search
-        print("Compute knn")
 
-        # Check if files already exist
-        os.makedirs("./cached_knn_pca", exist_ok=True)
-        embeddings_file = './cached_knn_pca/all_embeddings.pt'
-        skeletons_file = './cached_knn_pca/all_skeletons.pt'
-
-        if os.path.exists(embeddings_file) and os.path.exists(skeletons_file):
-            print("Loading existing embeddings and skeletons...")
-            all_embeddings = torch.load(embeddings_file).to(self.device)
-            all_skeletons = torch.load(skeletons_file).to(self.device)
-        else:
-            print("Computing knn...")
-            all_embeddings = []
-            all_skeletons = []
-
-            for batch in tqdm(train_loader, desc="Processing batches", unit="batch"):
-                all_skeletons.append(batch[0]['skeleton_2d'])
-
-                batch_embeddings = batch[0]['embeddings']
-                targets = torch.cat([
-                    batch_embeddings['upper'],
-                    batch_embeddings['lower'],
-                    batch_embeddings['l_arm'],
-                    batch_embeddings['r_arm']
-                ], dim=1).float().to(self.device)
-                all_embeddings.append(targets)
-
-            all_embeddings = torch.cat(all_embeddings, dim=0).to(self.device)
-            all_skeletons = torch.cat(all_skeletons, dim=0).to(self.device)
-
-            torch.save(all_embeddings, embeddings_file)
-            torch.save(all_skeletons, skeletons_file)
-            print(f"Saved {embeddings_file} and {skeletons_file}")        
-            print("Compute knn finished")
-
-        self.knn.add(all_embeddings, all_skeletons)
 
         best_val_loss = float('inf')
         epochs_no_improve = 0
@@ -309,16 +272,9 @@ class PoseRegressionModel:
             for batch_idx, batch in enumerate(progress_bar):
                 inputs = batch[0]['skeleton_2d'].view(batch[0]['skeleton_2d'].size(0), -1).to(self.device)
                 inputs2 = batch[0]['skeleton_2d_2'].view(batch[0]['skeleton_2d'].size(0), -1).to(self.device)
+                inputs3 = batch[0]['skeleton_2d_3'].view(batch[0]['skeleton_2d'].size(0), -1).to(self.device)
 
-                inputs = torch.cat([inputs, inputs2], dim = 1)
-
-                batch_embeddings = batch[0]['embeddings']
-                # targets = torch.cat([
-                #     batch_embeddings['upper'],
-                #     batch_embeddings['lower'],
-                #     batch_embeddings['l_arm'],
-                #     batch_embeddings['r_arm']
-                # ], dim=1).float().to(self.device)
+                inputs = torch.cat([inputs, inputs2, inputs3], dim = 1)
 
                 target = flatten_poses(batch[0]['skeleton_3d']).to(self.device)
 
@@ -371,7 +327,8 @@ class PoseRegressionModel:
                 for batch_idx, batch in enumerate(val_loader):
                     inputs = batch[0]['skeleton_2d'].view(batch[0]['skeleton_2d'].size(0), -1).to(self.device)
                     inputs2 = batch[0]['skeleton_2d_2'].view(batch[0]['skeleton_2d'].size(0), -1).to(self.device)
-                    inputs = torch.cat([inputs, inputs2], dim = 1)
+                    inputs3 = batch[0]['skeleton_2d_2'].view(batch[0]['skeleton_2d'].size(0), -1).to(self.device)
+                    inputs = torch.cat([inputs, inputs2, inputs3], dim = 1)
 
                     # batch_embeddings = batch[0]['embeddings']
 
@@ -436,11 +393,11 @@ class PoseRegressionModel:
 # Example usage:
 if __name__ == "__main__":
     # Create datasets
-    train_dataset = PosesDatasetPCA(use_additional_augment=False, split="train", fit=False)
-    val_dataset = PosesDatasetPCA(use_additional_augment=False, split="test", fit=False)
+    train_dataset = PosesDataset3cam(use_additional_augment=False, split="train")
+    val_dataset = PosesDataset3cam(use_additional_augment=False, split="test")
 
     # Create and train the model
-    model = PoseRegressionModel(input_dim=68, output_dim=51)
+    model = PoseRegressionModel(input_dim=17 * 2 * 3, output_dim=51)
     model.train(train_dataset, val_dataset)
 
     # Make predictions
@@ -453,5 +410,5 @@ if __name__ == "__main__":
     model.save_model('pose_2d_regressor_2inputs_skeleton_best_model.pth')
 
     # Load the model
-    loaded_model = PoseRegressionModel(encoders=None, input_dim=34, output_dim=8)
+    loaded_model = PoseRegressionModel(encoders=None, input_dim=17 * 2 * 3, output_dim=8)
     loaded_model.load_model('best_model.pth', "best_model_encoders.pkl")
